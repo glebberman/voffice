@@ -1,40 +1,45 @@
-import { canHear, CHAT_RADIUS, isWalkable, MAP_H, MAP_ROWS, MAP_W, resolveSpawn, SPAWN, tilesBetween, zoneAt, ZONES } from '@/game/map';
+import { CHAT_RADIUS, makeMap, OBJECT_RADIUS, tilesBetween, type MapData } from '@/game/map';
 import { describe, expect, it } from 'vitest';
+import coworkingData from '../../resources/maps/coworking.json';
+import officeData from '../../resources/maps/office.json';
 
-describe('целостность карты', () => {
+const MAPS: Record<string, MapData> = {
+    office: officeData as MapData,
+    coworking: coworkingData as MapData,
+};
+
+// целостность каждой карты из resources/maps — того же JSON,
+// которым сидер наполняет таблицу rooms
+describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
+    const map = makeMap(data);
+
     it('все строки одинаковой ширины', () => {
-        for (const row of MAP_ROWS) {
-            expect(row.length).toBe(MAP_W);
+        for (const row of map.rows) {
+            expect(row.length).toBe(map.width);
         }
-        expect(MAP_ROWS.length).toBe(MAP_H);
     });
 
-    it('периметр карты — сплошная стена', () => {
-        for (let x = 0; x < MAP_W; x++) {
-            expect(MAP_ROWS[0][x]).toBe('#');
-            expect(MAP_ROWS[MAP_H - 1][x]).toBe('#');
+    it('периметр — сплошная стена', () => {
+        for (let x = 0; x < map.width; x++) {
+            expect(map.tileAt(x, 0)).toBe('#');
+            expect(map.tileAt(x, map.height - 1)).toBe('#');
         }
-        for (let y = 0; y < MAP_H; y++) {
-            expect(MAP_ROWS[y][0]).toBe('#');
-            expect(MAP_ROWS[y][MAP_W - 1]).toBe('#');
+        for (let y = 0; y < map.height; y++) {
+            expect(map.tileAt(0, y)).toBe('#');
+            expect(map.tileAt(map.width - 1, y)).toBe('#');
         }
     });
 
     it('спавн проходим', () => {
-        expect(isWalkable(SPAWN.x, SPAWN.y)).toBe(true);
+        expect(map.isWalkable(map.spawn.x, map.spawn.y)).toBe(true);
     });
 
-    it('двери кухни и переговорки проходимы', () => {
-        expect(isWalkable(13, 5)).toBe(true); // дверь кухни
-        expect(isWalkable(20, 6)).toBe(true); // дверь переговорки
-    });
-
-    it('каждая зона достижима: внутри есть проходимые тайлы', () => {
-        for (const zone of ZONES) {
+    it('в каждой зоне есть проходимые тайлы', () => {
+        for (const zone of map.zones) {
             let walkable = 0;
             for (let y = zone.y1; y <= zone.y2; y++) {
                 for (let x = zone.x1; x <= zone.x2; x++) {
-                    if (isWalkable(x, y)) {
+                    if (map.isWalkable(x, y)) {
                         walkable++;
                     }
                 }
@@ -42,73 +47,76 @@ describe('целостность карты', () => {
             expect(walkable, `зона ${zone.name}`).toBeGreaterThan(0);
         }
     });
-});
 
-describe('isWalkable', () => {
-    it('стены и мебель непроходимы', () => {
-        expect(isWalkable(0, 0)).toBe(false); // стена
-        expect(isWalkable(2, 2)).toBe(false); // стол (D)
-        expect(isWalkable(3, 7)).toBe(false); // растение (P)
+    it('порталы стоят на проходимых тайлах и ведут в существующие карты на проходимые клетки', () => {
+        for (const portal of map.portals) {
+            expect(map.isWalkable(portal.x, portal.y), `портал ${portal.label}`).toBe(true);
+            const target = MAPS[portal.to];
+            expect(target, `карта ${portal.to} существует`).toBeDefined();
+            expect(makeMap(target).isWalkable(portal.tx, portal.ty), `прибытие ${portal.label}`).toBe(true);
+        }
     });
 
-    it('за пределами карты непроходимо', () => {
-        expect(isWalkable(-1, 0)).toBe(false);
-        expect(isWalkable(MAP_W, 0)).toBe(false);
-        expect(isWalkable(0, MAP_H)).toBe(false);
-    });
-});
-
-describe('зоны', () => {
-    it('находит кухню, переговорку и лаунж', () => {
-        expect(zoneAt(12, 2)?.name).toBe('Кухня');
-        expect(zoneAt(20, 3)?.name).toBe('Переговорка');
-        expect(zoneAt(15, 11)?.name).toBe('Лаунж');
-    });
-
-    it('опенспейс — вне зон', () => {
-        expect(zoneAt(SPAWN.x, SPAWN.y)).toBeNull();
+    it('к каждому объекту можно подойти на радиус взаимодействия', () => {
+        for (const obj of map.objects) {
+            let reachable = false;
+            for (let y = 0; y < map.height && !reachable; y++) {
+                for (let x = 0; x < map.width && !reachable; x++) {
+                    if (map.isWalkable(x, y) && tilesBetween(x, y, obj.x, obj.y) <= OBJECT_RADIUS) {
+                        reachable = true;
+                    }
+                }
+            }
+            expect(reachable, `объект ${obj.label}`).toBe(true);
+        }
     });
 
-    it('приватная только переговорка', () => {
-        expect(zoneAt(20, 3)?.isPrivate).toBe(true);
-        expect(zoneAt(12, 2)?.isPrivate).toBeUndefined();
-        expect(zoneAt(15, 11)?.isPrivate).toBeUndefined();
+    it('id объектов уникальны', () => {
+        const ids = map.objects.map((o) => o.id);
+        expect(new Set(ids).size).toBe(ids.length);
     });
 });
 
-describe('canHear (слышимость чата)', () => {
-    it('в опенспейсе слышно в радиусе и не слышно дальше', () => {
-        expect(canHear(6, 8, 6 + CHAT_RADIUS, 8)).toBe(true);
-        expect(canHear(6, 8, 6 + CHAT_RADIUS + 1, 8)).toBe(false);
+describe('офисная карта: геометрия и правила', () => {
+    const map = makeMap(MAPS.office);
+
+    it('двери кухни и переговорки проходимы', () => {
+        expect(map.isWalkable(13, 5)).toBe(true);
+        expect(map.isWalkable(20, 6)).toBe(true);
     });
 
-    it('приватная зона не выпускает звук наружу даже вплотную', () => {
-        // (20,5) — внутри переговорки, (20,7) — сразу за дверью, дистанция 2
-        expect(canHear(20, 7, 20, 5)).toBe(false);
-        expect(canHear(20, 5, 20, 7)).toBe(false);
+    it('стены, мебель и границы непроходимы', () => {
+        expect(map.isWalkable(0, 0)).toBe(false);
+        expect(map.isWalkable(2, 2)).toBe(false); // стол
+        expect(map.isWalkable(3, 7)).toBe(false); // растение
+        expect(map.isWalkable(-1, 0)).toBe(false);
+        expect(map.isWalkable(map.width, 0)).toBe(false);
     });
 
-    it('внутри приватной зоны слышно из любого угла, радиус не важен', () => {
-        // углы переговорки: дистанция ~7.8 > CHAT_RADIUS
-        expect(tilesBetween(17, 1, 23, 6)).toBeGreaterThan(CHAT_RADIUS);
-        expect(canHear(17, 1, 23, 6)).toBe(true);
+    it('зоны находятся, приватная только переговорка', () => {
+        expect(map.zoneAt(12, 2)?.name).toBe('Кухня');
+        expect(map.zoneAt(20, 3)?.isPrivate).toBe(true);
+        expect(map.zoneAt(15, 11)?.name).toBe('Лаунж');
+        expect(map.zoneAt(map.spawn.x, map.spawn.y)).toBeNull();
     });
 
-    it('непр приватные зоны работают по радиусу', () => {
-        expect(canHear(12, 2, 14, 2)).toBe(true); // оба на кухне, рядом
-        expect(canHear(12, 2, 14, 11)).toBe(false); // кухня → лаунж, далеко
-    });
-});
-
-describe('resolveSpawn', () => {
-    it('возвращает сохранённую позицию, если она проходима', () => {
-        expect(resolveSpawn({ x: 20, y: 4 })).toEqual({ x: 20, y: 4 });
+    it('canHear: радиус в опенспейсе, изоляция приватной зоны', () => {
+        expect(map.canHear(6, 8, 6 + CHAT_RADIUS, 8)).toBe(true);
+        expect(map.canHear(6, 8, 6 + CHAT_RADIUS + 1, 8)).toBe(false);
+        expect(map.canHear(20, 7, 20, 5)).toBe(false); // за дверью переговорки
+        expect(map.canHear(17, 1, 23, 6)).toBe(true); // из угла в угол переговорки
     });
 
-    it('падает обратно на спавн для null и непроходимых клеток', () => {
-        expect(resolveSpawn(null)).toEqual(SPAWN);
-        expect(resolveSpawn({ x: 0, y: 0 })).toEqual(SPAWN); // стена
-        expect(resolveSpawn({ x: 2, y: 2 })).toEqual(SPAWN); // стол
-        expect(resolveSpawn({ x: 999, y: 999 })).toEqual(SPAWN); // вне карты
+    it('resolveSpawn: сохранённая позиция или спавн', () => {
+        expect(map.resolveSpawn({ x: 20, y: 4 })).toEqual({ x: 20, y: 4 });
+        expect(map.resolveSpawn(null)).toEqual(map.spawn);
+        expect(map.resolveSpawn({ x: 0, y: 0 })).toEqual(map.spawn);
+    });
+
+    it('portalAt и nearestObject находят сущности', () => {
+        expect(map.portalAt(2, 14)?.to).toBe('coworking');
+        expect(map.portalAt(6, 8)).toBeNull();
+        expect(map.nearestObject(19, 2)?.id).toBe('office-board');
+        expect(map.nearestObject(6, 8)).toBeNull();
     });
 });

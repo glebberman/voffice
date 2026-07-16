@@ -13,10 +13,11 @@ class MessageController extends Controller
     {
         $validated = $request->validate([
             'body' => ['required', 'string', 'max:500'],
+            'room_id' => ['required', 'integer', 'exists:rooms,id'],
         ]);
 
         $message = $request->user()->messages()->create([
-            'room_id' => 1,
+            'room_id' => $validated['room_id'],
             'body' => $validated['body'],
         ]);
 

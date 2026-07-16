@@ -1,7 +1,14 @@
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarLayers } from './avatar';
-import { CHAT_RADIUS, MAP_H, MAP_ROWS, MAP_W, TILE, ZONES } from './map';
+import { CHAT_RADIUS, TILE, type GameMap, type MapObjectType } from './map';
 import type { Direction, PlayerState, PlayerStatus } from './types';
+
+const OBJECT_EMOJI: Record<MapObjectType, string> = {
+    board: '📝',
+    video: '📺',
+    map: '🗺️',
+    link: '🔗',
+};
 
 const STATUS_COLORS: Record<PlayerStatus, number> = {
     available: 0x22c55e,
@@ -71,11 +78,17 @@ export class OfficeScene {
     private proximityRing = new Graphics();
     private selfId: number | null = null;
     private destroyed = false;
+    private sceneTime = 0;
+    private portalPads: Graphics[] = [];
+    private objectNodes = new Map<string, { icon: Text; ring: Graphics; baseY: number }>();
+    private highlightedObject: string | null = null;
+
+    constructor(private map: GameMap) {}
 
     async init(host: HTMLElement): Promise<void> {
         await this.app.init({
-            width: MAP_W * TILE,
-            height: MAP_H * TILE,
+            width: this.map.width * TILE,
+            height: this.map.height * TILE,
             background: 0x37323f,
             antialias: true,
             resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -99,9 +112,11 @@ export class OfficeScene {
             .stroke({ width: 1.5, color: 0xffffff, alpha: 0.18 });
         this.proximityRing.visible = false;
         this.drawZoneLabels();
+        this.drawPortals();
         this.app.stage.addChild(this.proximityRing);
         this.playerLayer.sortableChildren = true; // кто ниже по карте — тот поверх
         this.app.stage.addChild(this.playerLayer);
+        this.drawObjects();
 
         this.app.ticker.add((ticker) => this.tick(ticker.deltaMS));
     }
@@ -296,6 +311,18 @@ export class OfficeScene {
     }
 
     private tick(deltaMS: number): void {
+        this.sceneTime += deltaMS;
+
+        // пульс порталов и покачивание иконок объектов
+        const pulse = 0.55 + 0.35 * Math.sin(this.sceneTime / 350);
+        for (const pad of this.portalPads) {
+            pad.alpha = pulse;
+        }
+        const bob = Math.sin(this.sceneTime / 400) * 3;
+        for (const node of this.objectNodes.values()) {
+            node.icon.position.y = node.baseY + bob;
+        }
+
         const step = (MOVE_SPEED * deltaMS) / 1000;
         for (const [id, sprite] of this.players) {
             const dx = sprite.target.x - sprite.root.x;
@@ -362,9 +389,9 @@ export class OfficeScene {
     private drawMap(): void {
         const g = new Graphics();
 
-        for (let y = 0; y < MAP_H; y++) {
-            for (let x = 0; x < MAP_W; x++) {
-                const ch = MAP_ROWS[y][x];
+        for (let y = 0; y < this.map.height; y++) {
+            for (let x = 0; x < this.map.width; x++) {
+                const ch = this.map.rows[y][x];
                 const px = x * TILE;
                 const py = y * TILE;
 
@@ -415,8 +442,51 @@ export class OfficeScene {
         this.app.stage.addChild(g);
     }
 
+    setObjectHighlight(id: string | null): void {
+        if (this.highlightedObject === id) {
+            return;
+        }
+        this.highlightedObject = id;
+        for (const [objectId, node] of this.objectNodes) {
+            const active = objectId === id;
+            node.ring.visible = active;
+            node.icon.scale.set(active ? 1.25 : 1);
+        }
+    }
+
+    private drawPortals(): void {
+        for (const portal of this.map.portals) {
+            const pad = new Graphics();
+            const cx = portal.x * TILE + TILE / 2;
+            const cy = portal.y * TILE + TILE / 2;
+            pad.ellipse(cx, cy, 13, 9).fill({ color: 0x7c6fae, alpha: 0.55 }).stroke({ width: 2, color: 0xb9aef0, alpha: 0.9 });
+            pad.ellipse(cx, cy, 7, 4).fill({ color: 0xe8e2ff, alpha: 0.8 });
+            this.app.stage.addChild(pad);
+            this.portalPads.push(pad);
+        }
+    }
+
+    private drawObjects(): void {
+        for (const obj of this.map.objects) {
+            const cx = obj.x * TILE + TILE / 2;
+            const baseY = obj.y * TILE - 4;
+
+            const ring = new Graphics();
+            ring.ellipse(cx, obj.y * TILE + TILE / 2, 15, 10).stroke({ width: 2, color: 0xffc914, alpha: 0.9 });
+            ring.visible = false;
+            this.app.stage.addChild(ring);
+
+            const icon = new Text({ text: OBJECT_EMOJI[obj.type] ?? OBJECT_EMOJI.link, style: { fontSize: 15 } });
+            icon.anchor.set(0.5, 1);
+            icon.position.set(cx, baseY);
+            this.app.stage.addChild(icon);
+
+            this.objectNodes.set(obj.id, { icon, ring, baseY });
+        }
+    }
+
     private drawZoneLabels(): void {
-        for (const zone of ZONES) {
+        for (const zone of this.map.zones) {
             const label = new Text({
                 text: zone.name.toUpperCase(),
                 style: {

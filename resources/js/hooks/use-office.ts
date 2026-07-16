@@ -1,4 +1,4 @@
-import { canHear, isWalkable, resolveSpawn, SPAWN, zoneAt, type Zone } from '@/game/map';
+import { makeMap, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
 import { OfficeScene } from '@/game/scene';
 import type {
     ChatMessage,
@@ -52,8 +52,12 @@ const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
 };
 
 export interface OfficeOptions {
+    roomId: number;
+    map: MapData;
     initialPosition: { x: number; y: number } | null;
     history: RoomMessage[];
+    // вызывается, когда игрок наступает на портал
+    onPortal: (portal: PortalData) => void;
 }
 
 export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTMLDivElement | null>, options: OfficeOptions) {
@@ -64,6 +68,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const [connected, setConnected] = useState(false);
     const [statuses, setStatuses] = useState<Record<number, PlayerStatus>>({});
     const [myStatus, setMyStatusState] = useState<ManualStatus>('available');
+    const [nearbyObject, setNearbyObject] = useState<MapObjectData | null>(null);
+    const [activeObject, setActiveObject] = useState<MapObjectData | null>(null);
+
+    // компонент комнаты монтируется заново на каждую комнату (key={room.id}),
+    // поэтому карта и id комнаты фиксируются на весь жизненный цикл хука
+    const [map] = useState(() => makeMap(options.map));
+    const roomId = options.roomId;
 
     const sceneRef = useRef<OfficeScene | null>(null);
     // Позиции всех игроков (включая себя) — вне React-состояния,
@@ -73,8 +84,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const lastStepRef = useRef(0);
     const userRef = useRef(user);
     userRef.current = user;
-    const spawnRef = useRef(resolveSpawn(options.initialPosition));
+    const spawnRef = useRef(map.resolveSpawn(options.initialPosition));
     const lastSavedPosRef = useRef<string | null>(null);
+    const nearbyObjectRef = useRef<MapObjectData | null>(null);
+    const activeObjectRef = useRef<MapObjectData | null>(null);
+    const portalTriggeredRef = useRef(false);
+    const onPortalRef = useRef(options.onPortal);
+    onPortalRef.current = options.onPortal;
 
     // эффективный статус (учитывает авто-away) — для колбэков без замыканий
     const manualRef = useRef<ManualStatus>('available');
@@ -101,8 +117,20 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         setStatuses((prev) => (prev[state.id] === state.status ? prev : { ...prev, [state.id]: state.status }));
     }, []);
 
+    const updateNearbyObject = useCallback(
+        (x: number, y: number) => {
+            const obj = map.nearestObject(x, y);
+            if (obj?.id !== nearbyObjectRef.current?.id) {
+                nearbyObjectRef.current = obj;
+                setNearbyObject(obj);
+                sceneRef.current?.setObjectHighlight(obj?.id ?? null);
+            }
+        },
+        [map],
+    );
+
     useEffect(() => {
-        const scene = new OfficeScene();
+        const scene = new OfficeScene(map);
         sceneRef.current = scene;
         let cancelled = false;
 
@@ -119,7 +147,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         }
 
         const echo = getEcho();
-        const channel = echo.join('office');
+        const channelName = `room.${roomId}`;
+        const channel = echo.join(channelName);
 
         if (import.meta.env.DEV) {
             // отладка из консоли: window.__voffice.players
@@ -185,10 +214,11 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 setOnline(members);
                 const me = self();
                 upsert(me);
-                setZone(zoneAt(me.x, me.y));
+                setZone(map.zoneAt(me.x, me.y));
+                updateNearbyObject(me.x, me.y);
                 for (const m of members) {
                     if (m.id !== me.id && !playersRef.current.has(m.id)) {
-                        upsert({ ...m, x: SPAWN.x, y: SPAWN.y, dir: 'down', status: 'available' });
+                        upsert({ ...m, x: map.spawn.x, y: map.spawn.y, dir: 'down', status: 'available' });
                     }
                 }
                 announce();
@@ -196,7 +226,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             .joining((member: PresenceMember) => {
                 setOnline((prev) => (prev.some((m) => m.id === member.id) ? prev : [...prev, member]));
                 if (!playersRef.current.has(member.id)) {
-                    upsert({ ...member, x: SPAWN.x, y: SPAWN.y, dir: 'down', status: 'available' });
+                    upsert({ ...member, x: map.spawn.x, y: map.spawn.y, dir: 'down', status: 'available' });
                 }
                 // рассказываем новичку, где мы стоим
                 announce();
@@ -238,7 +268,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 const sender = playersRef.current.get(p.id);
                 const sx = sender?.x ?? p.x;
                 const sy = sender?.y ?? p.y;
-                if (!canHear(me.x, me.y, sx, sy)) {
+                if (!map.canHear(me.x, me.y, sx, sy)) {
                     return;
                 }
                 sceneRef.current?.showBubble(p.id, p.text);
@@ -265,9 +295,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             }
             lastSavedPosRef.current = key;
             if (viaBeacon) {
-                beacon('/position', { x: me.x, y: me.y });
+                beacon('/position', { x: me.x, y: me.y, room_id: roomId });
             } else {
-                postJson('/position', { x: me.x, y: me.y }).catch(() => {
+                postJson('/position', { x: me.x, y: me.y, room_id: roomId }).catch(() => {
                     lastSavedPosRef.current = null; // не удалось — попробуем в следующий тик
                 });
             }
@@ -305,12 +335,19 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             const nx = me.x + dx;
             const ny = me.y + dy;
 
-            const changed = me.dir !== dir || isWalkable(nx, ny);
+            const changed = me.dir !== dir || map.isWalkable(nx, ny);
             me.dir = dir;
-            if (isWalkable(nx, ny)) {
+            if (map.isWalkable(nx, ny)) {
                 me.x = nx;
                 me.y = ny;
-                setZone(zoneAt(nx, ny));
+                setZone(map.zoneAt(nx, ny));
+                updateNearbyObject(nx, ny);
+
+                const portal = map.portalAt(nx, ny);
+                if (portal && !portalTriggeredRef.current) {
+                    portalTriggeredRef.current = true;
+                    onPortalRef.current(portal);
+                }
             }
 
             if (!changed) {
@@ -328,6 +365,19 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 return;
             }
             markActivity();
+
+            // пока открыта модалка объекта, игровые клавиши не работают
+            if (activeObjectRef.current) {
+                return;
+            }
+
+            // X — взаимодействие с ближайшим объектом
+            if (e.code === 'KeyX' && nearbyObjectRef.current) {
+                e.preventDefault();
+                activeObjectRef.current = nearbyObjectRef.current;
+                setActiveObject(nearbyObjectRef.current);
+                return;
+            }
 
             // клавиши 1–5 — эмодзи-реакции
             if (/^Digit[1-5]$/.test(e.code)) {
@@ -386,7 +436,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             window.removeEventListener('blur', onBlur);
             window.removeEventListener('pointerdown', markActivity);
             window.removeEventListener('mousemove', markActivity);
-            echo.leave('office');
+            echo.leave(channelName);
             scene.destroy();
             sceneRef.current = null;
             playersRef.current.clear();
@@ -394,23 +444,26 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const sendMessage = useCallback((text: string) => {
-        const trimmed = text.trim();
-        if (!trimmed) {
-            return;
-        }
-        const me = playersRef.current.get(userRef.current.id);
-        if (!me) {
-            return;
-        }
-        const echo = getEcho();
-        const channel = echo.join('office');
-        channel.whisper('chat', { id: me.id, name: me.name, text: trimmed, x: me.x, y: me.y } satisfies ChatPayload);
-        sceneRef.current?.showBubble(me.id, trimmed);
-        setMessages((prev) =>
-            [...prev, { key: `${me.id}-${Date.now()}-self`, userId: me.id, name: me.name, text: trimmed, at: Date.now() }].slice(-MAX_MESSAGES),
-        );
-    }, []);
+    const sendMessage = useCallback(
+        (text: string) => {
+            const trimmed = text.trim();
+            if (!trimmed) {
+                return;
+            }
+            const me = playersRef.current.get(userRef.current.id);
+            if (!me) {
+                return;
+            }
+            const echo = getEcho();
+            const channel = echo.join(`room.${roomId}`);
+            channel.whisper('chat', { id: me.id, name: me.name, text: trimmed, x: me.x, y: me.y } satisfies ChatPayload);
+            sceneRef.current?.showBubble(me.id, trimmed);
+            setMessages((prev) =>
+                [...prev, { key: `${me.id}-${Date.now()}-self`, userId: me.id, name: me.name, text: trimmed, at: Date.now() }].slice(-MAX_MESSAGES),
+            );
+        },
+        [roomId],
+    );
 
     const sendReaction = useCallback((emoji: string) => {
         sendReactionRef.current(emoji);
@@ -425,10 +478,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             // X-Socket-ID исключает наш сокет из broadcast(...)->toOthers():
             // своё сообщение добавляем из ответа сервера, без дубля
             const socketId = getEcho().socketId();
-            const message = await postJson<RoomMessage>('/messages', { body: trimmed }, socketId ? { 'X-Socket-ID': socketId } : {});
+            const message = await postJson<RoomMessage>('/messages', { body: trimmed, room_id: roomId }, socketId ? { 'X-Socket-ID': socketId } : {});
             appendRoomMessage(message);
         },
-        [appendRoomMessage],
+        [appendRoomMessage, roomId],
     );
 
     const setMyStatus = useCallback((status: ManualStatus) => {
@@ -442,5 +495,25 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         broadcastStatusRef.current();
     }, []);
 
-    return { online, messages, roomMessages, zone, connected, statuses, myStatus, sendMessage, sendRoomMessage, sendReaction, setMyStatus };
+    const closeObject = useCallback(() => {
+        activeObjectRef.current = null;
+        setActiveObject(null);
+    }, []);
+
+    return {
+        online,
+        messages,
+        roomMessages,
+        zone,
+        connected,
+        statuses,
+        myStatus,
+        nearbyObject,
+        activeObject,
+        closeObject,
+        sendMessage,
+        sendRoomMessage,
+        sendReaction,
+        setMyStatus,
+    };
 }

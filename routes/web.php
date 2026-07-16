@@ -2,7 +2,8 @@
 
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\PositionController;
-use App\Models\Message;
+use App\Http\Controllers\RoomController;
+use App\Models\Room;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -15,32 +16,15 @@ Route::middleware(['auth'])->group(function () {
         return Inertia::render('dashboard');
     })->name('dashboard');
 
+    // привычная ссылка: ведёт в последнюю комнату пользователя
     Route::get('office', function () {
-        $user = request()->user();
+        $room = Room::find(request()->user()->last_room_id) ?? Room::where('slug', 'office')->firstOrFail();
 
-        $history = Message::query()
-            ->where('room_id', 1)
-            ->with('user:id,name')
-            ->latest('id')
-            ->take(50)
-            ->get()
-            ->reverse()
-            ->values()
-            ->map(fn (Message $m) => [
-                'id' => $m->id,
-                'userId' => $m->user_id,
-                'name' => $m->user->name,
-                'body' => $m->body,
-                'at' => $m->created_at->toIso8601String(),
-            ]);
-
-        return Inertia::render('office', [
-            'history' => $history,
-            'lastPosition' => $user->last_x !== null && $user->last_y !== null
-                ? ['x' => $user->last_x, 'y' => $user->last_y]
-                : null,
-        ]);
+        return redirect()->route('rooms.show', $room);
     })->name('office');
+
+    Route::get('rooms', [RoomController::class, 'index'])->name('rooms.index');
+    Route::get('rooms/{room:slug}', [RoomController::class, 'show'])->name('rooms.show');
 
     Route::post('messages', [MessageController::class, 'store'])->name('messages.store');
     Route::post('position', [PositionController::class, 'update'])->name('position.update');

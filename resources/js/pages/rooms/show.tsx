@@ -1,21 +1,16 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { type MapData, type PortalData } from '@/game/map';
 import { type PlayerStatus, type RoomMessage } from '@/game/types';
 import { REACTIONS, useOffice, type ManualStatus } from '@/hooks/use-office';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem, type SharedData } from '@/types';
-import { Head, usePage } from '@inertiajs/react';
+import { type SharedData } from '@/types';
+import { Head, router, usePage } from '@inertiajs/react';
 import { SendHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Офис',
-        href: '/office',
-    },
-];
 
 const STATUS_DOT: Record<PlayerStatus, string> = {
     available: 'bg-green-500',
@@ -31,20 +26,65 @@ const STATUS_LABEL: Record<PlayerStatus, string> = {
     away: 'Отошёл',
 };
 
-interface OfficeProps extends SharedData {
+interface RoomInfo {
+    id: number;
+    slug: string;
+    name: string;
+    map: MapData;
+}
+
+interface RoomShowProps extends SharedData {
+    room: RoomInfo;
     history: RoomMessage[];
     lastPosition: { x: number; y: number } | null;
 }
 
-export default function Office() {
-    const { auth, history, lastPosition } = usePage<OfficeProps>().props;
+// координаты прибытия из портала (?x=..&y=..) важнее сохранённой позиции
+function arrivalPosition(): { x: number; y: number } | null {
+    const params = new URLSearchParams(window.location.search);
+    const x = Number(params.get('x'));
+    const y = Number(params.get('y'));
+    return params.has('x') && Number.isInteger(x) && Number.isInteger(y) ? { x, y } : null;
+}
+
+export default function RoomShow() {
+    const { room } = usePage<RoomShowProps>().props;
+
+    // ремоунт на каждую комнату: хук фиксирует карту и канал при монтировании
+    return <RoomView key={room.id} />;
+}
+
+function RoomView() {
+    const { auth, room, history, lastPosition } = usePage<RoomShowProps>().props;
     const canvasHost = useRef<HTMLDivElement | null>(null);
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
     const [tab, setTab] = useState<'nearby' | 'room'>('nearby');
 
-    const { online, messages, roomMessages, zone, connected, statuses, myStatus, sendMessage, sendRoomMessage, sendReaction, setMyStatus } =
-        useOffice({ id: auth.user.id, name: auth.user.name }, canvasHost, { initialPosition: lastPosition, history });
+    const {
+        online,
+        messages,
+        roomMessages,
+        zone,
+        connected,
+        statuses,
+        myStatus,
+        nearbyObject,
+        activeObject,
+        closeObject,
+        sendMessage,
+        sendRoomMessage,
+        sendReaction,
+        setMyStatus,
+    } = useOffice({ id: auth.user.id, name: auth.user.name }, canvasHost, {
+        roomId: room.id,
+        map: room.map,
+        initialPosition: arrivalPosition() ?? lastPosition,
+        history,
+        onPortal: (portal: PortalData) => {
+            router.visit(`/rooms/${portal.to}?x=${portal.tx}&y=${portal.ty}`, { preserveState: false });
+        },
+    });
 
     useEffect(() => {
         messagesEnd.current?.scrollIntoView({ behavior: 'smooth' });
@@ -63,8 +103,13 @@ export default function Office() {
     const selfStatus = statuses[auth.user.id] ?? 'available';
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Офис" />
+        <AppLayout
+            breadcrumbs={[
+                { title: 'Комнаты', href: '/rooms' },
+                { title: room.name, href: `/rooms/${room.slug}` },
+            ]}
+        >
+            <Head title={room.name} />
             <div className="flex h-full flex-1 flex-col gap-4 p-4 lg:flex-row">
                 <div className="flex min-w-0 flex-1 flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -77,7 +122,7 @@ export default function Office() {
                         )}
                         {selfStatus === 'away' && <Badge variant="secondary">Отошёл</Badge>}
                         <div className="ml-auto flex items-center gap-2">
-                            <span className="text-muted-foreground hidden text-xs xl:block">Ходить — стрелки/WASD, реакции — 1–5</span>
+                            <span className="text-muted-foreground hidden text-xs xl:block">Стрелки/WASD · реакции 1–5 · X — объект</span>
                             <Select value={myStatus} onValueChange={(v) => setMyStatus(v as ManualStatus)}>
                                 <SelectTrigger className="h-8 w-44">
                                     <SelectValue />
@@ -97,6 +142,12 @@ export default function Office() {
                     </div>
                     <div className="relative w-fit max-w-full">
                         <div ref={canvasHost} className="border-sidebar-border/70 dark:border-sidebar-border overflow-hidden rounded-xl border" />
+                        {nearbyObject && (
+                            <div className="bg-background/90 absolute top-3 left-1/2 -translate-x-1/2 rounded-full border px-3 py-1 text-sm shadow-sm backdrop-blur">
+                                <span className="font-semibold">{nearbyObject.label}</span>
+                                <span className="text-muted-foreground"> — нажмите X</span>
+                            </div>
+                        )}
                         <div className="bg-background/80 absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-1 shadow-sm backdrop-blur">
                             {REACTIONS.map((emoji, i) => (
                                 <button
@@ -195,6 +246,22 @@ export default function Office() {
                     </div>
                 </div>
             </div>
+
+            <Dialog open={activeObject !== null} onOpenChange={(open) => !open && closeObject()}>
+                <DialogContent className="flex h-[80vh] !max-w-4xl flex-col gap-0 p-0">
+                    <DialogHeader className="px-4 py-3">
+                        <DialogTitle>{activeObject?.label}</DialogTitle>
+                    </DialogHeader>
+                    {activeObject && (
+                        <iframe
+                            src={activeObject.url}
+                            title={activeObject.label}
+                            className="h-full w-full rounded-b-lg border-0"
+                            allow="fullscreen"
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

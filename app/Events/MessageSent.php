@@ -19,8 +19,7 @@ class MessageSent implements ShouldBroadcast
 
     public function broadcastOn(): PresenceChannel
     {
-        // на этапе 3 канал станет room.{id}
-        return new PresenceChannel('office');
+        return new PresenceChannel('room.'.$this->message->room_id);
     }
 
     public function broadcastAs(): string
