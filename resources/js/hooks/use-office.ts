@@ -1,4 +1,4 @@
-import { CHAT_RADIUS, isWalkable, SPAWN, tilesBetween, zoneAt, type Zone } from '@/game/map';
+import { canHear, isWalkable, SPAWN, zoneAt, type Zone } from '@/game/map';
 import { OfficeScene } from '@/game/scene';
 import type { ChatMessage, ChatPayload, Direction, MovePayload, PlayerState, PlayerStatus, ReactPayload, StatusPayload } from '@/game/types';
 import { getEcho } from '@/lib/echo';
@@ -148,17 +148,6 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             }
         };
 
-        // Слышим ли мы игрока в точке (x, y): приватная зона отсекает
-        // всех снаружи (и мы не слышим внутрь), иначе — радиус.
-        const canHear = (me: PlayerState, sx: number, sy: number): boolean => {
-            const myZone = zoneAt(me.x, me.y);
-            const senderZone = zoneAt(sx, sy);
-            if (myZone?.isPrivate || senderZone?.isPrivate) {
-                return myZone === senderZone;
-            }
-            return tilesBetween(me.x, me.y, sx, sy) <= CHAT_RADIUS;
-        };
-
         channel
             .here((members: PresenceMember[]) => {
                 setConnected(true);
@@ -218,7 +207,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 const sender = playersRef.current.get(p.id);
                 const sx = sender?.x ?? p.x;
                 const sy = sender?.y ?? p.y;
-                if (!canHear(me, sx, sy)) {
+                if (!canHear(me.x, me.y, sx, sy)) {
                     return;
                 }
                 sceneRef.current?.showBubble(p.id, p.text);

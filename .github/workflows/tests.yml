@@ -34,6 +34,9 @@ jobs:
       - name: Install Node Dependencies
         run: npm ci
 
+      - name: JS Tests
+        run: npm test
+
       - name: Build Assets
         run: npm run build
 

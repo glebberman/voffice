@@ -74,3 +74,14 @@ export const CHAT_RADIUS = 4;
 export function tilesBetween(ax: number, ay: number, bx: number, by: number): number {
     return Math.hypot(ax - bx, ay - by);
 }
+
+// Слышит ли слушатель в (lx, ly) говорящего в (sx, sy): приватная зона
+// отсекает всех снаружи (в обе стороны), иначе действует радиус.
+export function canHear(lx: number, ly: number, sx: number, sy: number): boolean {
+    const listenerZone = zoneAt(lx, ly);
+    const senderZone = zoneAt(sx, sy);
+    if (listenerZone?.isPrivate || senderZone?.isPrivate) {
+        return listenerZone === senderZone;
+    }
+    return tilesBetween(lx, ly, sx, sy) <= CHAT_RADIUS;
+}
