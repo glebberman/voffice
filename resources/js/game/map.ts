@@ -54,11 +54,13 @@ export interface Zone {
     y1: number;
     x2: number;
     y2: number;
+    // приватная зона: чат слышен только внутри неё (и не слышен снаружи)
+    isPrivate?: boolean;
 }
 
 export const ZONES: Zone[] = [
     { name: 'Кухня', x1: 11, y1: 1, x2: 15, y2: 5 },
-    { name: 'Переговорка', x1: 17, y1: 1, x2: 23, y2: 6 },
+    { name: 'Переговорка', x1: 17, y1: 1, x2: 23, y2: 6, isPrivate: true },
     { name: 'Лаунж', x1: 13, y1: 10, x2: 20, y2: 14 },
 ];
 

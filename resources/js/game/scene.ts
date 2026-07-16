@@ -1,7 +1,16 @@
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarLayers } from './avatar';
 import { CHAT_RADIUS, MAP_H, MAP_ROWS, MAP_W, TILE, ZONES } from './map';
-import type { Direction, PlayerState } from './types';
+import type { Direction, PlayerState, PlayerStatus } from './types';
+
+const STATUS_COLORS: Record<PlayerStatus, number> = {
+    available: 0x22c55e,
+    busy: 0xf59e0b,
+    dnd: 0xef4444,
+    away: 0x9ca3af,
+};
+
+const REACTION_TTL_MS = 1600;
 
 const COLORS = {
     floor: 0xede7dc,
@@ -47,6 +56,10 @@ interface PlayerSprite {
     bubbleTimer: ReturnType<typeof setTimeout> | null;
     target: { x: number; y: number };
     dir: Direction;
+    status: PlayerStatus;
+    statusDot: Graphics;
+    labelHalfWidth: number;
+    floaters: { node: Text; age: number }[];
 }
 
 const MOVE_SPEED = TILE * 7; // px в секунду
@@ -113,6 +126,7 @@ export class OfficeScene {
         if (existing) {
             existing.target = pos;
             this.faceDirection(existing, state.dir);
+            this.setStatus(state.id, state.status);
             return;
         }
 
@@ -141,6 +155,9 @@ export class OfficeScene {
         label.position.set(0, FEET_Y + 3);
         root.addChild(label);
 
+        const statusDot = new Graphics();
+        root.addChild(statusDot);
+
         const bubble = new Container();
         bubble.visible = false;
         root.addChild(bubble);
@@ -157,8 +174,13 @@ export class OfficeScene {
             bubbleTimer: null,
             target: pos,
             dir: state.dir,
+            status: state.status,
+            statusDot,
+            labelHalfWidth: label.width / 2,
+            floaters: [],
         };
         this.players.set(state.id, sprite);
+        this.drawStatusDot(sprite);
 
         // слои персонажа подгружаются асинхронно и встают между тенью и именем
         loadAvatar(state.id).then((layers) => {
@@ -201,6 +223,35 @@ export class OfficeScene {
         }
         sprite.root.destroy({ children: true });
         this.players.delete(id);
+    }
+
+    setStatus(id: number, status: PlayerStatus): void {
+        const sprite = this.players.get(id);
+        if (!sprite || sprite.status === status) {
+            return;
+        }
+        sprite.status = status;
+        this.drawStatusDot(sprite);
+    }
+
+    showReaction(id: number, emoji: string): void {
+        const sprite = this.players.get(id);
+        if (!sprite) {
+            return;
+        }
+        const node = new Text({ text: emoji, style: { fontSize: 22 } });
+        node.anchor.set(0.5, 1);
+        node.position.set(0, -44);
+        sprite.root.addChild(node);
+        sprite.floaters.push({ node, age: 0 });
+    }
+
+    private drawStatusDot(sprite: PlayerSprite): void {
+        sprite.statusDot
+            .clear()
+            .circle(-sprite.labelHalfWidth - 7, FEET_Y + 9, 3.5)
+            .fill(STATUS_COLORS[sprite.status])
+            .stroke({ width: 1, color: 0x37323f, alpha: 0.6 });
     }
 
     showBubble(id: number, text: string): void {
@@ -267,6 +318,20 @@ export class OfficeScene {
             if (frame !== sprite.frame) {
                 sprite.frame = frame;
                 this.applyFrame(sprite);
+            }
+
+            if (sprite.floaters.length > 0) {
+                sprite.floaters = sprite.floaters.filter((f) => {
+                    f.age += deltaMS;
+                    if (f.age >= REACTION_TTL_MS) {
+                        f.node.destroy();
+                        return false;
+                    }
+                    const progress = f.age / REACTION_TTL_MS;
+                    f.node.position.y = -44 - progress * 26;
+                    f.node.alpha = progress < 0.6 ? 1 : 1 - (progress - 0.6) / 0.4;
+                    return true;
+                });
             }
 
             if (id === this.selfId) {

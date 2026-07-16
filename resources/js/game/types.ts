@@ -1,11 +1,14 @@
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
+export type PlayerStatus = 'available' | 'busy' | 'dnd' | 'away';
+
 export interface PlayerState {
     id: number;
     name: string;
     x: number; // координата тайла
     y: number;
     dir: Direction;
+    status: PlayerStatus;
 }
 
 export interface ChatMessage {
@@ -21,6 +24,7 @@ export interface MovePayload {
     x: number;
     y: number;
     dir: Direction;
+    st?: PlayerStatus;
 }
 
 export interface ChatPayload {
@@ -29,4 +33,14 @@ export interface ChatPayload {
     text: string;
     x: number;
     y: number;
+}
+
+export interface ReactPayload {
+    id: number;
+    emoji: string;
+}
+
+export interface StatusPayload {
+    id: number;
+    status: PlayerStatus;
 }
