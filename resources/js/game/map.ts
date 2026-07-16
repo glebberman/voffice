@@ -48,6 +48,11 @@ export function isWalkable(x: number, y: number): boolean {
 
 export const SPAWN = { x: 6, y: 8 };
 
+// сохранённая позиция может устареть (карта изменилась) — проверяем проходимость
+export function resolveSpawn(stored: { x: number; y: number } | null | undefined): { x: number; y: number } {
+    return stored && isWalkable(stored.x, stored.y) ? stored : SPAWN;
+}
+
 export interface Zone {
     name: string;
     x1: number;

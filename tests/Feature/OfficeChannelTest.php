@@ -10,18 +10,6 @@ class OfficeChannelTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        config([
-            'broadcasting.default' => 'reverb',
-            'broadcasting.connections.reverb.key' => 'test-key',
-            'broadcasting.connections.reverb.secret' => 'test-secret',
-            'broadcasting.connections.reverb.app_id' => 'test-app',
-        ]);
-    }
-
     public function test_guests_cannot_join_the_office_presence_channel(): void
     {
         $this->postJson('/broadcasting/auth', [

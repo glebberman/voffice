@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { type PlayerStatus } from '@/game/types';
+import { type PlayerStatus, type RoomMessage } from '@/game/types';
 import { REACTIONS, useOffice, type ManualStatus } from '@/hooks/use-office';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type SharedData } from '@/types';
@@ -31,24 +31,32 @@ const STATUS_LABEL: Record<PlayerStatus, string> = {
     away: 'Отошёл',
 };
 
+interface OfficeProps extends SharedData {
+    history: RoomMessage[];
+    lastPosition: { x: number; y: number } | null;
+}
+
 export default function Office() {
-    const { auth } = usePage<SharedData>().props;
+    const { auth, history, lastPosition } = usePage<OfficeProps>().props;
     const canvasHost = useRef<HTMLDivElement | null>(null);
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
+    const [tab, setTab] = useState<'nearby' | 'room'>('nearby');
 
-    const { online, messages, zone, connected, statuses, myStatus, sendMessage, sendReaction, setMyStatus } = useOffice(
-        { id: auth.user.id, name: auth.user.name },
-        canvasHost,
-    );
+    const { online, messages, roomMessages, zone, connected, statuses, myStatus, sendMessage, sendRoomMessage, sendReaction, setMyStatus } =
+        useOffice({ id: auth.user.id, name: auth.user.name }, canvasHost, { initialPosition: lastPosition, history });
 
     useEffect(() => {
         messagesEnd.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+    }, [messages, roomMessages, tab]);
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        sendMessage(draft);
+        if (tab === 'nearby') {
+            sendMessage(draft);
+        } else {
+            void sendRoomMessage(draft).catch(() => {});
+        }
         setDraft('');
     };
 
@@ -128,26 +136,58 @@ export default function Office() {
                     </div>
 
                     <div className="border-sidebar-border/70 dark:border-sidebar-border flex min-h-64 flex-1 flex-col rounded-xl border">
-                        <h2 className="border-sidebar-border/70 dark:border-sidebar-border border-b p-4 pb-3 text-sm font-semibold">
-                            Чат поблизости
-                        </h2>
+                        <div className="border-sidebar-border/70 dark:border-sidebar-border flex gap-1 border-b p-2">
+                            {(
+                                [
+                                    ['nearby', 'Рядом'],
+                                    ['room', 'Комната'],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setTab(key)}
+                                    className={`rounded-lg px-3 py-1 text-sm font-semibold transition-colors ${
+                                        tab === key ? 'bg-secondary' : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
                         <div className="flex-1 space-y-2 overflow-y-auto p-4 text-sm">
-                            {messages.length === 0 && (
+                            {tab === 'nearby' && messages.length === 0 && (
                                 <p className="text-muted-foreground text-xs">
                                     Сообщения слышны только тем, кто рядом — подойдите к коллеге и напишите что-нибудь. В приватных зонах
                                     (переговорка) разговор не выходит за стены.
                                 </p>
                             )}
-                            {messages.map((m) => (
-                                <div key={m.key}>
-                                    <span className={m.userId === auth.user.id ? 'font-semibold' : 'text-primary font-semibold'}>{m.name}: </span>
-                                    <span>{m.text}</span>
-                                </div>
-                            ))}
+                            {tab === 'room' && roomMessages.length === 0 && (
+                                <p className="text-muted-foreground text-xs">Чат всей комнаты — виден всем и сохраняется в истории.</p>
+                            )}
+                            {tab === 'nearby' &&
+                                messages.map((m) => (
+                                    <div key={m.key}>
+                                        <span className={m.userId === auth.user.id ? 'font-semibold' : 'text-primary font-semibold'}>{m.name}: </span>
+                                        <span>{m.text}</span>
+                                    </div>
+                                ))}
+                            {tab === 'room' &&
+                                roomMessages.map((m) => (
+                                    <div key={m.id}>
+                                        <span className={m.userId === auth.user.id ? 'font-semibold' : 'text-primary font-semibold'}>{m.name}: </span>
+                                        <span>{m.body}</span>
+                                    </div>
+                                ))}
                             <div ref={messagesEnd} />
                         </div>
                         <form onSubmit={submit} className="border-sidebar-border/70 dark:border-sidebar-border flex gap-2 border-t p-3">
-                            <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Сказать вслух…" maxLength={200} />
+                            <Input
+                                value={draft}
+                                onChange={(e) => setDraft(e.target.value)}
+                                placeholder={tab === 'nearby' ? 'Сказать вслух…' : 'Написать всей комнате…'}
+                                maxLength={tab === 'nearby' ? 200 : 500}
+                            />
                             <Button type="submit" size="icon" disabled={!draft.trim()}>
                                 <SendHorizontal className="size-4" />
                             </Button>

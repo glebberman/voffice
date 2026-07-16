@@ -1,12 +1,25 @@
-import { canHear, isWalkable, SPAWN, zoneAt, type Zone } from '@/game/map';
+import { canHear, isWalkable, resolveSpawn, SPAWN, zoneAt, type Zone } from '@/game/map';
 import { OfficeScene } from '@/game/scene';
-import type { ChatMessage, ChatPayload, Direction, MovePayload, PlayerState, PlayerStatus, ReactPayload, StatusPayload } from '@/game/types';
+import type {
+    ChatMessage,
+    ChatPayload,
+    Direction,
+    MovePayload,
+    PlayerState,
+    PlayerStatus,
+    ReactPayload,
+    RoomMessage,
+    StatusPayload,
+} from '@/game/types';
+import { beacon, postJson } from '@/lib/api';
 import { getEcho } from '@/lib/echo';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STEP_INTERVAL_MS = 150;
 const MAX_MESSAGES = 50;
+const MAX_ROOM_MESSAGES = 100;
 const AWAY_AFTER_MS = 60_000;
+const POSITION_SAVE_MS = 30_000;
 
 export const REACTIONS = ['👋', '❤️', '😂', '🎉', '👍'];
 
@@ -38,9 +51,15 @@ const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
     right: { dx: 1, dy: 0 },
 };
 
-export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTMLDivElement | null>) {
+export interface OfficeOptions {
+    initialPosition: { x: number; y: number } | null;
+    history: RoomMessage[];
+}
+
+export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTMLDivElement | null>, options: OfficeOptions) {
     const [online, setOnline] = useState<PresenceMember[]>([]);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [roomMessages, setRoomMessages] = useState<RoomMessage[]>(options.history);
     const [zone, setZone] = useState<Zone | null>(null);
     const [connected, setConnected] = useState(false);
     const [statuses, setStatuses] = useState<Record<number, PlayerStatus>>({});
@@ -54,6 +73,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const lastStepRef = useRef(0);
     const userRef = useRef(user);
     userRef.current = user;
+    const spawnRef = useRef(resolveSpawn(options.initialPosition));
+    const lastSavedPosRef = useRef<string | null>(null);
 
     // эффективный статус (учитывает авто-away) — для колбэков без замыканий
     const manualRef = useRef<ManualStatus>('available');
@@ -67,6 +88,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const updateStatusState = useCallback((id: number, status: PlayerStatus) => {
         setStatuses((prev) => (prev[id] === status ? prev : { ...prev, [id]: status }));
         sceneRef.current?.setStatus(id, status);
+    }, []);
+
+    const appendRoomMessage = useCallback((message: RoomMessage) => {
+        setRoomMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message].slice(-MAX_ROOM_MESSAGES)));
     }, []);
 
     const upsert = useCallback((state: PlayerState) => {
@@ -102,7 +127,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         }
 
         const self = (): PlayerState =>
-            playersRef.current.get(userRef.current.id) ?? { ...userRef.current, x: SPAWN.x, y: SPAWN.y, dir: 'down', status: effectiveStatus() };
+            playersRef.current.get(userRef.current.id) ?? {
+                ...userRef.current,
+                x: spawnRef.current.x,
+                y: spawnRef.current.y,
+                dir: 'down',
+                status: effectiveStatus(),
+            };
 
         const announce = () => {
             const me = self();
@@ -216,7 +247,34 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                         -MAX_MESSAGES,
                     ),
                 );
+            })
+            // серверное broadcast-событие чата комнаты (see MessageSent)
+            .listen('.message.sent', (p: RoomMessage) => {
+                appendRoomMessage(p);
             });
+
+        // периодическое сохранение позиции (+ при закрытии страницы)
+        const savePosition = (viaBeacon = false) => {
+            const me = playersRef.current.get(userRef.current.id);
+            if (!me) {
+                return;
+            }
+            const key = `${me.x}:${me.y}`;
+            if (key === lastSavedPosRef.current) {
+                return;
+            }
+            lastSavedPosRef.current = key;
+            if (viaBeacon) {
+                beacon('/position', { x: me.x, y: me.y });
+            } else {
+                postJson('/position', { x: me.x, y: me.y }).catch(() => {
+                    lastSavedPosRef.current = null; // не удалось — попробуем в следующий тик
+                });
+            }
+        };
+        const positionSaver = setInterval(() => savePosition(), POSITION_SAVE_MS);
+        const onPageHide = () => savePosition(true);
+        window.addEventListener('pagehide', onPageHide);
 
         // страховочный heartbeat + проверка авто-away: раз в 5 секунд
         const heartbeat = setInterval(() => {
@@ -320,6 +378,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             cancelled = true;
             clearInterval(heartbeat);
             clearInterval(moveLoop);
+            clearInterval(positionSaver);
+            window.removeEventListener('pagehide', onPageHide);
+            savePosition(true);
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
             window.removeEventListener('blur', onBlur);
@@ -355,6 +416,21 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         sendReactionRef.current(emoji);
     }, []);
 
+    const sendRoomMessage = useCallback(
+        async (text: string) => {
+            const trimmed = text.trim();
+            if (!trimmed) {
+                return;
+            }
+            // X-Socket-ID исключает наш сокет из broadcast(...)->toOthers():
+            // своё сообщение добавляем из ответа сервера, без дубля
+            const socketId = getEcho().socketId();
+            const message = await postJson<RoomMessage>('/messages', { body: trimmed }, socketId ? { 'X-Socket-ID': socketId } : {});
+            appendRoomMessage(message);
+        },
+        [appendRoomMessage],
+    );
+
     const setMyStatus = useCallback((status: ManualStatus) => {
         if (!MANUAL_STATUSES.includes(status)) {
             return;
@@ -366,5 +442,5 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         broadcastStatusRef.current();
     }, []);
 
-    return { online, messages, zone, connected, statuses, myStatus, sendMessage, sendReaction, setMyStatus };
+    return { online, messages, roomMessages, zone, connected, statuses, myStatus, sendMessage, sendRoomMessage, sendReaction, setMyStatus };
 }

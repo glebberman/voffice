@@ -21,6 +21,12 @@
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
+        <!-- каналы регистрируются на дефолтном бродкастере при загрузке
+             routes/channels.php, поэтому драйвер фиксируем на весь процесс -->
+        <env name="BROADCAST_CONNECTION" value="reverb" force="true"/>
+        <env name="REVERB_APP_ID" value="test-app" force="true"/>
+        <env name="REVERB_APP_KEY" value="test-key" force="true"/>
+        <env name="REVERB_APP_SECRET" value="test-secret" force="true"/>
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_DATABASE" value="testing"/>
         <env name="MAIL_MAILER" value="array"/>

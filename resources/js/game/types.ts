@@ -19,6 +19,15 @@ export interface ChatMessage {
     at: number;
 }
 
+// персистентное сообщение чата комнаты (из БД / broadcast-события)
+export interface RoomMessage {
+    id: number;
+    userId: number;
+    name: string;
+    body: string;
+    at: string;
+}
+
 export interface MovePayload {
     id: number;
     x: number;

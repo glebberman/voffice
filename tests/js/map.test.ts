@@ -1,4 +1,4 @@
-import { canHear, CHAT_RADIUS, isWalkable, MAP_H, MAP_ROWS, MAP_W, SPAWN, tilesBetween, zoneAt, ZONES } from '@/game/map';
+import { canHear, CHAT_RADIUS, isWalkable, MAP_H, MAP_ROWS, MAP_W, resolveSpawn, SPAWN, tilesBetween, zoneAt, ZONES } from '@/game/map';
 import { describe, expect, it } from 'vitest';
 
 describe('целостность карты', () => {
@@ -97,5 +97,18 @@ describe('canHear (слышимость чата)', () => {
     it('непр приватные зоны работают по радиусу', () => {
         expect(canHear(12, 2, 14, 2)).toBe(true); // оба на кухне, рядом
         expect(canHear(12, 2, 14, 11)).toBe(false); // кухня → лаунж, далеко
+    });
+});
+
+describe('resolveSpawn', () => {
+    it('возвращает сохранённую позицию, если она проходима', () => {
+        expect(resolveSpawn({ x: 20, y: 4 })).toEqual({ x: 20, y: 4 });
+    });
+
+    it('падает обратно на спавн для null и непроходимых клеток', () => {
+        expect(resolveSpawn(null)).toEqual(SPAWN);
+        expect(resolveSpawn({ x: 0, y: 0 })).toEqual(SPAWN); // стена
+        expect(resolveSpawn({ x: 2, y: 2 })).toEqual(SPAWN); // стол
+        expect(resolveSpawn({ x: 999, y: 999 })).toEqual(SPAWN); // вне карты
     });
 });
