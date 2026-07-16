@@ -1,4 +1,5 @@
-import { Application, Container, Graphics, Text } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarLayers } from './avatar';
 import { CHAT_RADIUS, MAP_H, MAP_ROWS, MAP_W, TILE, ZONES } from './map';
 import type { Direction, PlayerState } from './types';
 
@@ -33,16 +34,15 @@ function centerOf(tileX: number, tileY: number): { x: number; y: number } {
     return { x: tileX * TILE + TILE / 2, y: tileY * TILE + TILE / 2 };
 }
 
-const EYE_OFFSET: Record<Direction, { dx: number; dy: number }> = {
-    up: { dx: 0, dy: -1 },
-    down: { dx: 0, dy: 1 },
-    left: { dx: -1, dy: 0 },
-    right: { dx: 1, dy: 0 },
-};
+// низ LPC-персонажа относительно центра тайла (ноги чуть ниже центра)
+const FEET_Y = 16;
 
 interface PlayerSprite {
     root: Container;
-    eyes: Graphics;
+    charSprites: Sprite[];
+    avatar: AvatarLayers | null;
+    walkTime: number;
+    frame: number;
     bubble: Container;
     bubbleTimer: ReturnType<typeof setTimeout> | null;
     target: { x: number; y: number };
@@ -87,6 +87,7 @@ export class OfficeScene {
         this.proximityRing.visible = false;
         this.drawZoneLabels();
         this.app.stage.addChild(this.proximityRing);
+        this.playerLayer.sortableChildren = true; // кто ниже по карте — тот поверх
         this.app.stage.addChild(this.playerLayer);
 
         this.app.ticker.add((ticker) => this.tick(ticker.deltaMS));
@@ -117,16 +118,14 @@ export class OfficeScene {
 
         const root = new Container();
         root.position.set(pos.x, pos.y);
+        root.zIndex = pos.y;
 
-        const color = avatarColor(state.id);
-        const body = new Graphics();
-        body.circle(0, 0, 12)
-            .fill(color)
-            .stroke({ width: isSelf ? 3 : 2, color: isSelf ? 0xffffff : 0x37323f, alpha: 0.9 });
-        root.addChild(body);
-
-        const eyes = new Graphics();
-        root.addChild(eyes);
+        const ground = new Graphics();
+        ground.ellipse(0, FEET_Y - 2, 10, 4).fill({ color: 0x000000, alpha: 0.18 });
+        if (isSelf) {
+            ground.ellipse(0, FEET_Y - 2, 13, 6).stroke({ width: 2, color: avatarColor(state.id), alpha: 0.9 });
+        }
+        root.addChild(ground);
 
         const label = new Text({
             text: state.name,
@@ -139,7 +138,7 @@ export class OfficeScene {
             },
         });
         label.anchor.set(0.5, 0);
-        label.position.set(0, 15);
+        label.position.set(0, FEET_Y + 3);
         root.addChild(label);
 
         const bubble = new Container();
@@ -148,9 +147,33 @@ export class OfficeScene {
 
         this.playerLayer.addChild(root);
 
-        const sprite: PlayerSprite = { root, eyes, bubble, bubbleTimer: null, target: pos, dir: state.dir };
+        const sprite: PlayerSprite = {
+            root,
+            charSprites: [],
+            avatar: null,
+            walkTime: 0,
+            frame: 0,
+            bubble,
+            bubbleTimer: null,
+            target: pos,
+            dir: state.dir,
+        };
         this.players.set(state.id, sprite);
-        this.faceDirection(sprite, state.dir);
+
+        // слои персонажа подгружаются асинхронно и встают между тенью и именем
+        loadAvatar(state.id).then((layers) => {
+            if (this.destroyed || this.players.get(state.id) !== sprite || layers.length === 0) {
+                return;
+            }
+            sprite.avatar = layers;
+            layers.forEach((_, i) => {
+                const s = new Sprite(layers[i][DIR_ROW[sprite.dir]][0]);
+                s.anchor.set(0.5, 1);
+                s.position.set(0, FEET_Y);
+                sprite.charSprites.push(s);
+                root.addChildAt(s, 1 + i);
+            });
+        });
 
         if (isSelf) {
             this.selfId = state.id;
@@ -210,7 +233,7 @@ export class OfficeScene {
         content.position.set(0, -padY);
 
         sprite.bubble.addChild(bg, content);
-        sprite.bubble.position.set(0, -18);
+        sprite.bubble.position.set(0, -52);
         sprite.bubble.visible = true;
 
         if (sprite.bubbleTimer) {
@@ -227,13 +250,25 @@ export class OfficeScene {
             const dx = sprite.target.x - sprite.root.x;
             const dy = sprite.target.y - sprite.root.y;
             const dist = Math.hypot(dx, dy);
-            if (dist > 0.5) {
+            const walking = dist > 0.5;
+            if (walking) {
                 const k = Math.min(1, step / dist);
                 sprite.root.x += dx * k;
                 sprite.root.y += dy * k;
+                sprite.walkTime += deltaMS;
             } else {
                 sprite.root.position.set(sprite.target.x, sprite.target.y);
+                sprite.walkTime = 0;
             }
+            sprite.root.zIndex = sprite.root.y;
+
+            // кадр 0 — стоя; 1–8 — цикл шага, ~90мс на кадр
+            const frame = walking ? 1 + (Math.floor(sprite.walkTime / 90) % (WALK_COLS - 1)) : 0;
+            if (frame !== sprite.frame) {
+                sprite.frame = frame;
+                this.applyFrame(sprite);
+            }
+
             if (id === this.selfId) {
                 this.proximityRing.position.set(sprite.root.x, sprite.root.y);
             }
@@ -241,15 +276,22 @@ export class OfficeScene {
     }
 
     private faceDirection(sprite: PlayerSprite, dir: Direction): void {
+        if (sprite.dir === dir) {
+            return;
+        }
         sprite.dir = dir;
-        const { dx, dy } = EYE_OFFSET[dir];
-        const px = -dy; // перпендикуляр для разноса глаз
-        const py = dx;
-        sprite.eyes.clear();
-        sprite.eyes
-            .circle(dx * 5 + px * 3.5, dy * 5 + py * 3.5, 2.2)
-            .circle(dx * 5 - px * 3.5, dy * 5 - py * 3.5, 2.2)
-            .fill(0xffffff);
+        this.applyFrame(sprite);
+    }
+
+    private applyFrame(sprite: PlayerSprite): void {
+        if (!sprite.avatar) {
+            return;
+        }
+        const row = DIR_ROW[sprite.dir];
+        sprite.charSprites.forEach((s, i) => {
+            const frames = sprite.avatar![i][row];
+            s.texture = frames[Math.min(sprite.frame, frames.length - 1)];
+        });
     }
 
     private drawMap(): void {
