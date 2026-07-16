@@ -78,6 +78,22 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             channel.whisper('pos', { id: me.id, x: me.x, y: me.y, dir: me.dir } satisfies MovePayload);
         };
 
+        // Whisper'ы приходят и от других вкладок этого же пользователя —
+        // их heartbeat со старой позицией не должен телепортировать нашего
+        // персонажа назад, поэтому свои id игнорируем.
+        const applyRemoteMove = (p: MovePayload) => {
+            if (p.id === userRef.current.id) {
+                return;
+            }
+            const known = playersRef.current.get(p.id);
+            if (known) {
+                known.x = p.x;
+                known.y = p.y;
+                known.dir = p.dir;
+                sceneRef.current?.movePlayer(p.id, p.x, p.y, p.dir);
+            }
+        };
+
         channel
             .here((members: PresenceMember[]) => {
                 setConnected(true);
@@ -106,22 +122,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 sceneRef.current?.removePlayer(member.id);
             })
             .listenForWhisper('pos', (p: MovePayload) => {
-                const known = playersRef.current.get(p.id);
-                if (known) {
-                    known.x = p.x;
-                    known.y = p.y;
-                    known.dir = p.dir;
-                    sceneRef.current?.movePlayer(p.id, p.x, p.y, p.dir);
-                }
+                applyRemoteMove(p);
             })
             .listenForWhisper('move', (p: MovePayload) => {
-                const known = playersRef.current.get(p.id);
-                if (known) {
-                    known.x = p.x;
-                    known.y = p.y;
-                    known.dir = p.dir;
-                    sceneRef.current?.movePlayer(p.id, p.x, p.y, p.dir);
-                }
+                applyRemoteMove(p);
             })
             .listenForWhisper('chat', (p: ChatPayload) => {
                 const me = self();
