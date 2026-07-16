@@ -1,0 +1,100 @@
+# Dev-окружение целиком: docker compose up -d
+# (для свежего клона сначала нужен vendor: composer install — образ собирается
+# из vendor/laravel/sail/runtimes)
+services:
+    app:
+        build:
+            context: './vendor/laravel/sail/runtimes/8.4'
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP:-1000}'
+        image: 'sail-8.4/app'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        ports:
+            - '${APP_PORT:-8000}:80'
+        environment:
+            WWWUSER: '${WWWUSER:-1000}'
+            LARAVEL_SAIL: 1
+            XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
+            XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
+            # серверная публикация событий идёт внутрь docker-сети, к контейнеру reverb;
+            # браузер при этом ходит на localhost:8080 (VITE_REVERB_* берутся из .env)
+            REVERB_HOST: reverb
+            REVERB_PORT: 8080
+            REVERB_SCHEME: http
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+
+    queue:
+        build:
+            context: './vendor/laravel/sail/runtimes/8.4'
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP:-1000}'
+        image: 'sail-8.4/app'
+        command: php artisan queue:listen --tries=1
+        environment:
+            WWWUSER: '${WWWUSER:-1000}'
+            LARAVEL_SAIL: 1
+            REVERB_HOST: reverb
+            REVERB_PORT: 8080
+            REVERB_SCHEME: http
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - app
+
+    reverb:
+        build:
+            context: './vendor/laravel/sail/runtimes/8.4'
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP:-1000}'
+        image: 'sail-8.4/app'
+        command: php artisan reverb:start
+        ports:
+            - '${REVERB_PORT:-8080}:8080'
+        environment:
+            WWWUSER: '${WWWUSER:-1000}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - app
+
+    vite:
+        build:
+            context: './vendor/laravel/sail/runtimes/8.4'
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP:-1000}'
+        image: 'sail-8.4/app'
+        # node_modules живёт в отдельном volume: бинарники esbuild/rollup
+        # платформозависимы, и linux-сборки не должны затирать хостовые (macOS)
+        command: sh -c 'npm install && exec npm run dev'
+        ports:
+            - '${VITE_PORT:-5173}:${VITE_PORT:-5173}'
+        environment:
+            SUPERVISOR_PHP_USER: root
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+            - 'sail-node-modules:/var/www/html/node_modules'
+        networks:
+            - sail
+        depends_on:
+            - app
+
+networks:
+    sail:
+        driver: bridge
+
+volumes:
+    sail-node-modules:
