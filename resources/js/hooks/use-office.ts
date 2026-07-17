@@ -1,9 +1,13 @@
+import type { AvatarConfig } from '@/game/avatar';
 import { makeMap, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
+import { findStep } from '@/game/path';
 import { OfficeScene } from '@/game/scene';
 import type {
+    BuzzPayload,
     ChatMessage,
     ChatPayload,
     Direction,
+    LookPayload,
     MovePayload,
     PlayerState,
     PlayerStatus,
@@ -31,6 +35,7 @@ const ALL_STATUSES: PlayerStatus[] = [...MANUAL_STATUSES, 'away'];
 interface PresenceMember {
     id: number;
     name: string;
+    avatar?: AvatarConfig | null;
 }
 
 const KEY_TO_DIR: Record<string, Direction> = {
@@ -91,6 +96,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const portalTriggeredRef = useRef(false);
     const onPortalRef = useRef(options.onPortal);
     onPortalRef.current = options.onPortal;
+    const followTargetRef = useRef<number | null>(null);
+    const buzzRef = useRef<(id: number) => void>(() => {});
 
     // эффективный статус (учитывает авто-away) — для колбэков без замыканий
     const manualRef = useRef<ManualStatus>('available');
@@ -157,12 +164,24 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
         const self = (): PlayerState =>
             playersRef.current.get(userRef.current.id) ?? {
-                ...userRef.current,
+                id: userRef.current.id,
+                name: userRef.current.name,
+                avatar: userRef.current.avatar,
                 x: spawnRef.current.x,
                 y: spawnRef.current.y,
                 dir: 'down',
                 status: effectiveStatus(),
             };
+
+        buzzRef.current = (id: number) => {
+            const me = self();
+            channel.whisper('buzz', { from: me.id, name: me.name, to: id } satisfies BuzzPayload);
+            // разрешение спрашиваем в жесте пользователя — пригодится, когда
+            // buzz прилетит нам самим
+            if ('Notification' in window && Notification.permission === 'default') {
+                void Notification.requestPermission();
+            }
+        };
 
         const announce = () => {
             const me = self();
@@ -262,6 +281,26 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                     return;
                 }
                 sceneRef.current?.showReaction(p.id, p.emoji);
+            })
+            .listenForWhisper('look', (p: LookPayload) => {
+                if (p.id === userRef.current.id) {
+                    return;
+                }
+                const known = playersRef.current.get(p.id);
+                if (known) {
+                    known.avatar = p.avatar;
+                    sceneRef.current?.setLook(p.id, p.avatar);
+                }
+            })
+            .listenForWhisper('buzz', (p: BuzzPayload) => {
+                if (p.to !== userRef.current.id) {
+                    return;
+                }
+                sceneRef.current?.shake();
+                sceneRef.current?.showReaction(userRef.current.id, '🔔');
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(`${p.name} зовёт вас в офис!`, { body: 'Вас позвали в voffice' });
+                }
             })
             .listenForWhisper('chat', (p: ChatPayload) => {
                 const me = self();
@@ -395,6 +434,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 return;
             }
             e.preventDefault();
+            followTargetRef.current = null; // ручное движение отменяет «следовать»
             if (!pressedRef.current.includes(dir)) {
                 pressedRef.current.push(dir);
             }
@@ -421,6 +461,20 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             const dir = pressedRef.current[pressedRef.current.length - 1];
             if (dir) {
                 tryStep(dir);
+                return;
+            }
+            // режим «следовать»: BFS-шаг к цели, пока не окажемся рядом
+            const targetId = followTargetRef.current;
+            if (targetId !== null) {
+                const target = playersRef.current.get(targetId);
+                if (!target) {
+                    followTargetRef.current = null;
+                    return;
+                }
+                const stepDir = findStep(map, self(), target);
+                if (stepDir) {
+                    tryStep(stepDir);
+                }
             }
         }, 40);
 
@@ -500,6 +554,34 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         setActiveObject(null);
     }, []);
 
+    const locatePlayer = useCallback((id: number) => {
+        sceneRef.current?.pingPlayer(id);
+    }, []);
+
+    const followPlayer = useCallback((id: number) => {
+        followTargetRef.current = id;
+    }, []);
+
+    const buzzPlayer = useCallback((id: number) => {
+        buzzRef.current(id);
+    }, []);
+
+    const saveAvatar = useCallback(
+        async (cfg: AvatarConfig) => {
+            const saved = await postJson<AvatarConfig>('/avatar', { ...cfg });
+            const me = playersRef.current.get(userRef.current.id);
+            if (me) {
+                me.avatar = saved;
+            }
+            sceneRef.current?.setLook(userRef.current.id, saved);
+            getEcho()
+                .join(`room.${roomId}`)
+                .whisper('look', { id: userRef.current.id, avatar: saved } satisfies LookPayload);
+            return saved;
+        },
+        [roomId],
+    );
+
     return {
         online,
         messages,
@@ -515,5 +597,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         sendRoomMessage,
         sendReaction,
         setMyStatus,
+        locatePlayer,
+        followPlayer,
+        buzzPlayer,
+        saveAvatar,
     };
 }

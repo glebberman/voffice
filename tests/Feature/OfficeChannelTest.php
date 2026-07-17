@@ -45,7 +45,7 @@ class OfficeChannelTest extends TestCase
 
         // pusher-протокол сериализует user_id строкой
         $this->assertEquals($user->id, $channelData['user_id']);
-        $this->assertSame(['id' => $user->id, 'name' => 'Аня'], $channelData['user_info']);
+        $this->assertSame(['id' => $user->id, 'name' => 'Аня', 'avatar' => null], $channelData['user_info']);
     }
 
     public function test_nonexistent_room_channel_is_forbidden(): void

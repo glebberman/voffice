@@ -1,0 +1,58 @@
+{
+    "bodies": {
+        "male": {
+            "label": "Мужское",
+            "body": "body/bodies/male/walk.png",
+            "head": "head/heads/human/male/walk.png",
+            "feet": "feet/shoes/basic/male/walk.png",
+            "tie": "neck/tie/necktie/male/walk.png",
+            "tops": {
+                "formal": { "label": "Рубашка в полоску", "path": "torso/clothes/longsleeve/formal_striped/male/walk.png" },
+                "shirt": { "label": "Футболка", "path": "torso/clothes/shortsleeve/shortsleeve/male/walk.png" },
+                "longsleeve": { "label": "Лонгслив", "path": "torso/clothes/longsleeve/longsleeve2/male/walk.png" },
+                "polo": { "label": "Поло", "path": "torso/clothes/longsleeve/longsleeve2_polo/male/walk.png" },
+                "cardigan": { "label": "Кардиган", "path": "torso/clothes/longsleeve/longsleeve2_cardigan/male/walk.png" }
+            },
+            "legs": {
+                "formal": { "label": "Классические брюки", "path": "legs/formal/male/walk.png" },
+                "pants": { "label": "Джинсы", "path": "legs/pants/male/walk.png" }
+            }
+        },
+        "female": {
+            "label": "Женское",
+            "body": "body/bodies/female/walk.png",
+            "head": "head/heads/human/female/walk.png",
+            "feet": "feet/shoes/basic/thin/walk.png",
+            "tie": null,
+            "tops": {
+                "shirt": { "label": "Футболка", "path": "torso/clothes/shortsleeve/shortsleeve/female/walk.png" },
+                "longsleeve": { "label": "Лонгслив", "path": "torso/clothes/longsleeve/longsleeve/female/walk.png" },
+                "scoop": { "label": "Топ", "path": "torso/clothes/longsleeve/scoop/female/walk.png" },
+                "tshirt": { "label": "Свободная футболка", "path": "torso/clothes/shortsleeve/tshirt/female/walk.png" },
+                "buttoned": { "label": "Блуза на пуговицах", "path": "torso/clothes/longsleeve/longsleeve2_buttoned/female/walk.png" }
+            },
+            "legs": {
+                "skirt": { "label": "Юбка", "path": "legs/skirts/plain/thin/walk.png" },
+                "pants": { "label": "Джинсы", "path": "legs/pants/thin/walk.png" },
+                "formal": { "label": "Классические брюки", "path": "legs/formal/thin/walk.png" }
+            }
+        }
+    },
+    "hairs": [
+        "afro",
+        "bangs",
+        "bob",
+        "buzzcut",
+        "curly_short",
+        "curtains",
+        "long",
+        "mop",
+        "parted",
+        "pixie",
+        "plain",
+        "shorthawk",
+        "spiked",
+        "swoop"
+    ],
+    "eyes": "eyes/human/adult/default/walk.png"
+}

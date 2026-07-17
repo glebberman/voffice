@@ -1,3 +1,5 @@
+import type { AvatarConfig } from './avatar';
+
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
 export type PlayerStatus = 'available' | 'busy' | 'dnd' | 'away';
@@ -9,6 +11,7 @@ export interface PlayerState {
     y: number;
     dir: Direction;
     status: PlayerStatus;
+    avatar?: AvatarConfig | null;
 }
 
 export interface ChatMessage {
@@ -52,4 +55,15 @@ export interface ReactPayload {
 export interface StatusPayload {
     id: number;
     status: PlayerStatus;
+}
+
+export interface LookPayload {
+    id: number;
+    avatar: AvatarConfig;
+}
+
+export interface BuzzPayload {
+    from: number;
+    name: string;
+    to: number;
 }

@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
-import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarLayers } from './avatar';
+import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
 import { CHAT_RADIUS, TILE, type GameMap, type MapObjectType } from './map';
 import type { Direction, PlayerState, PlayerStatus } from './types';
 
@@ -82,6 +82,8 @@ export class OfficeScene {
     private portalPads: Graphics[] = [];
     private objectNodes = new Map<string, { icon: Text; ring: Graphics; baseY: number }>();
     private highlightedObject: string | null = null;
+    private shakeTime = 0;
+    private pings: { node: Text; age: number }[] = [];
 
     constructor(private map: GameMap) {}
 
@@ -196,27 +198,59 @@ export class OfficeScene {
         };
         this.players.set(state.id, sprite);
         this.drawStatusDot(sprite);
-
-        // слои персонажа подгружаются асинхронно и встают между тенью и именем
-        loadAvatar(state.id).then((layers) => {
-            if (this.destroyed || this.players.get(state.id) !== sprite || layers.length === 0) {
-                return;
-            }
-            sprite.avatar = layers;
-            layers.forEach((_, i) => {
-                const s = new Sprite(layers[i][DIR_ROW[sprite.dir]][0]);
-                s.anchor.set(0.5, 1);
-                s.position.set(0, FEET_Y);
-                sprite.charSprites.push(s);
-                root.addChildAt(s, 1 + i);
-            });
-        });
+        this.loadLook(state.id, sprite, state.avatar);
 
         if (isSelf) {
             this.selfId = state.id;
             this.proximityRing.visible = true;
             this.proximityRing.position.set(pos.x, pos.y);
         }
+    }
+
+    // (пере)загрузка слоёв персонажа: асинхронно, между тенью и именем
+    private loadLook(id: number, sprite: PlayerSprite, cfg?: AvatarConfig | null): void {
+        loadAvatar(id, cfg).then((layers) => {
+            if (this.destroyed || this.players.get(id) !== sprite || layers.length === 0) {
+                return;
+            }
+            for (const old of sprite.charSprites) {
+                old.destroy();
+            }
+            sprite.charSprites = [];
+            sprite.avatar = layers;
+            layers.forEach((_, i) => {
+                const s = new Sprite(layers[i][DIR_ROW[sprite.dir]][Math.min(sprite.frame, layers[i][0].length - 1)]);
+                s.anchor.set(0.5, 1);
+                s.position.set(0, FEET_Y);
+                sprite.charSprites.push(s);
+                sprite.root.addChildAt(s, 1 + i);
+            });
+        });
+    }
+
+    setLook(id: number, cfg: AvatarConfig | null): void {
+        const sprite = this.players.get(id);
+        if (sprite) {
+            this.loadLook(id, sprite, cfg);
+        }
+    }
+
+    // жёлтый прыгающий маркер над игроком (locate)
+    pingPlayer(id: number): void {
+        const sprite = this.players.get(id);
+        if (!sprite) {
+            return;
+        }
+        const marker = new Text({ text: '📍', style: { fontSize: 24 } });
+        marker.anchor.set(0.5, 1);
+        marker.position.set(0, -52);
+        sprite.root.addChild(marker);
+        this.pings.push({ node: marker, age: 0 });
+    }
+
+    // тряска сцены при buzz
+    shake(): void {
+        this.shakeTime = 500;
     }
 
     movePlayer(id: number, tileX: number, tileY: number, dir: Direction): void {
@@ -312,6 +346,28 @@ export class OfficeScene {
 
     private tick(deltaMS: number): void {
         this.sceneTime += deltaMS;
+
+        // тряска сцены при buzz
+        if (this.shakeTime > 0) {
+            this.shakeTime = Math.max(0, this.shakeTime - deltaMS);
+            const power = (this.shakeTime / 500) * 5;
+            this.app.stage.position.set(Math.sin(this.sceneTime / 12) * power, Math.cos(this.sceneTime / 9) * power);
+        } else if (this.app.stage.position.x !== 0) {
+            this.app.stage.position.set(0, 0);
+        }
+
+        // прыгающие маркеры locate
+        if (this.pings.length > 0) {
+            this.pings = this.pings.filter((ping) => {
+                ping.age += deltaMS;
+                if (ping.age >= 3500) {
+                    ping.node.destroy();
+                    return false;
+                }
+                ping.node.position.y = -52 - Math.abs(Math.sin(ping.age / 180)) * 10;
+                return true;
+            });
+        }
 
         // пульс порталов и покачивание иконок объектов
         const pulse = 0.55 + 0.35 * Math.sin(this.sceneTime / 350);

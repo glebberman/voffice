@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\RoomController;
@@ -28,6 +29,7 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('messages', [MessageController::class, 'store'])->name('messages.store');
     Route::post('position', [PositionController::class, 'update'])->name('position.update');
+    Route::post('avatar', [AvatarController::class, 'update'])->name('avatar.update');
 });
 
 require __DIR__.'/settings.php';

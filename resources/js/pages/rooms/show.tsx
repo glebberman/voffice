@@ -1,15 +1,17 @@
+import { AvatarEditor } from '@/components/avatar-editor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { type AvatarConfig } from '@/game/avatar';
 import { type MapData, type PortalData } from '@/game/map';
 import { type PlayerStatus, type RoomMessage } from '@/game/types';
 import { REACTIONS, useOffice, type ManualStatus } from '@/hooks/use-office';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
-import { SendHorizontal } from 'lucide-react';
+import { BellRing, Footprints, MapPin, SendHorizontal, Shirt } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 const STATUS_DOT: Record<PlayerStatus, string> = {
@@ -60,6 +62,9 @@ function RoomView() {
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
     const [tab, setTab] = useState<'nearby' | 'room'>('nearby');
+    const [editorOpen, setEditorOpen] = useState(false);
+    // в этом проекте users.avatar — json-конфиг образа, а не URL картинки
+    const [avatarCfg, setAvatarCfg] = useState<AvatarConfig | null>((auth.user.avatar as unknown as AvatarConfig | null) ?? null);
 
     const {
         online,
@@ -76,7 +81,11 @@ function RoomView() {
         sendRoomMessage,
         sendReaction,
         setMyStatus,
-    } = useOffice({ id: auth.user.id, name: auth.user.name }, canvasHost, {
+        locatePlayer,
+        followPlayer,
+        buzzPlayer,
+        saveAvatar,
+    } = useOffice({ id: auth.user.id, name: auth.user.name, avatar: avatarCfg }, canvasHost, {
         roomId: room.id,
         map: room.map,
         initialPosition: arrivalPosition() ?? lastPosition,
@@ -123,6 +132,10 @@ function RoomView() {
                         {selfStatus === 'away' && <Badge variant="secondary">Отошёл</Badge>}
                         <div className="ml-auto flex items-center gap-2">
                             <span className="text-muted-foreground hidden text-xs xl:block">Стрелки/WASD · реакции 1–5 · X — объект</span>
+                            <Button variant="outline" size="sm" className="h-8" onClick={() => setEditorOpen(true)}>
+                                <Shirt className="size-4" />
+                                Персонаж
+                            </Button>
                             <Select value={myStatus} onValueChange={(v) => setMyStatus(v as ManualStatus)}>
                                 <SelectTrigger className="h-8 w-44">
                                     <SelectValue />
@@ -172,12 +185,41 @@ function RoomView() {
                         <ul className="flex flex-col gap-2">
                             {online.map((member) => {
                                 const status = statuses[member.id] ?? 'available';
+                                const isSelf = member.id === auth.user.id;
                                 return (
-                                    <li key={member.id} className="flex items-center gap-2 text-sm">
+                                    <li key={member.id} className="group flex items-center gap-2 text-sm">
                                         <span title={STATUS_LABEL[status]} className={`size-2 rounded-full ${STATUS_DOT[status]}`} />
                                         {member.name}
-                                        {member.id === auth.user.id && <span className="text-muted-foreground text-xs">(вы)</span>}
-                                        {status !== 'available' && (
+                                        {isSelf && <span className="text-muted-foreground text-xs">(вы)</span>}
+                                        {!isSelf && (
+                                            <span className="ml-auto flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                                                <button
+                                                    type="button"
+                                                    title="Где это?"
+                                                    onClick={() => locatePlayer(member.id)}
+                                                    className="hover:bg-secondary rounded p-1"
+                                                >
+                                                    <MapPin className="size-3.5" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    title="Следовать"
+                                                    onClick={() => followPlayer(member.id)}
+                                                    className="hover:bg-secondary rounded p-1"
+                                                >
+                                                    <Footprints className="size-3.5" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    title="Позвать"
+                                                    onClick={() => buzzPlayer(member.id)}
+                                                    className="hover:bg-secondary rounded p-1"
+                                                >
+                                                    <BellRing className="size-3.5" />
+                                                </button>
+                                            </span>
+                                        )}
+                                        {isSelf && status !== 'available' && (
                                             <span className="text-muted-foreground ml-auto text-xs">{STATUS_LABEL[status]}</span>
                                         )}
                                     </li>
@@ -246,6 +288,18 @@ function RoomView() {
                     </div>
                 </div>
             </div>
+
+            {editorOpen && (
+                <AvatarEditor
+                    open={editorOpen}
+                    onOpenChange={setEditorOpen}
+                    initial={avatarCfg}
+                    onSave={async (cfg) => {
+                        await saveAvatar(cfg);
+                        setAvatarCfg(cfg);
+                    }}
+                />
+            )}
 
             <Dialog open={activeObject !== null} onOpenChange={(open) => !open && closeObject()}>
                 <DialogContent className="flex h-[80vh] !max-w-4xl flex-col gap-0 p-0">

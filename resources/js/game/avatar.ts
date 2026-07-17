@@ -1,4 +1,5 @@
 import { Assets, Rectangle, Texture } from 'pixi.js';
+import wardrobeData from '../../wardrobe.json';
 import type { Direction } from './types';
 
 // LPC-кадры: 64×64, в walk-листе 4 ряда направлений × 9 колонок
@@ -10,64 +11,41 @@ export const DIR_ROW: Record<Direction, number> = { up: 0, left: 1, down: 2, rig
 
 const BASE = '/assets/lpc/characters/spritesheets';
 
-// только стили с плоским adult/walk.png (у некоторых walk — папка с bg/fg
-// слоями, их поддержим позже вместе с двухслойными жилетами)
-const HAIRS = [
-    'afro',
-    'bangs',
-    'bob',
-    'buzzcut',
-    'curly_short',
-    'curtains',
-    'long',
-    'mop',
-    'parted',
-    'pixie',
-    'plain',
-    'shorthawk',
-    'spiked',
-    'swoop',
-];
-
-interface Wardrobe {
-    body: string;
-    head: string;
-    tops: string[];
-    ties: string | null;
-    legs: string[];
-    feet: string;
+// Гардероб — единый источник правды в resources/wardrobe.json:
+// его же читает AvatarController для whitelist-валидации.
+interface WardrobeItem {
+    label: string;
+    path: string;
 }
 
-const WARDROBES: Wardrobe[] = [
-    {
-        body: 'body/bodies/male/walk.png',
-        head: 'head/heads/human/male/walk.png',
-        tops: [
-            'torso/clothes/longsleeve/formal_striped/male/walk.png',
-            'torso/clothes/shortsleeve/shortsleeve/male/walk.png',
-            'torso/clothes/longsleeve/longsleeve2/male/walk.png',
-            'torso/clothes/longsleeve/longsleeve2_polo/male/walk.png',
-            'torso/clothes/longsleeve/longsleeve2_cardigan/male/walk.png',
-        ],
-        ties: 'neck/tie/necktie/male/walk.png',
-        legs: ['legs/formal/male/walk.png', 'legs/pants/male/walk.png'],
-        feet: 'feet/shoes/basic/male/walk.png',
-    },
-    {
-        body: 'body/bodies/female/walk.png',
-        head: 'head/heads/human/female/walk.png',
-        tops: [
-            'torso/clothes/shortsleeve/shortsleeve/female/walk.png',
-            'torso/clothes/longsleeve/longsleeve/female/walk.png',
-            'torso/clothes/longsleeve/scoop/female/walk.png',
-            'torso/clothes/shortsleeve/tshirt/female/walk.png',
-            'torso/clothes/longsleeve/longsleeve2_buttoned/female/walk.png',
-        ],
-        ties: null,
-        legs: ['legs/skirts/plain/thin/walk.png', 'legs/pants/thin/walk.png', 'legs/formal/thin/walk.png'],
-        feet: 'feet/shoes/basic/thin/walk.png',
-    },
-];
+interface WardrobeBody {
+    label: string;
+    body: string;
+    head: string;
+    feet: string;
+    tie: string | null;
+    tops: Record<string, WardrobeItem>;
+    legs: Record<string, WardrobeItem>;
+}
+
+export interface Wardrobe {
+    bodies: Record<string, WardrobeBody>;
+    hairs: string[];
+    eyes: string;
+}
+
+export const WARDROBE = wardrobeData as Wardrobe;
+
+// сохранённый образ пользователя (users.avatar)
+export interface AvatarConfig {
+    body: string;
+    hair: string;
+    top: string;
+    legs: string;
+    tie?: boolean;
+}
+
+const hairPath = (style: string) => `hair/${style}/adult/walk.png`;
 
 // детерминированный «рандом» по id: один и тот же пользователь всегда
 // выглядит одинаково у всех клиентов
@@ -78,17 +56,39 @@ function pick<T>(items: T[], id: number, salt: number): T {
     return items[h % items.length];
 }
 
-// слои снизу вверх
-export function lookFor(id: number): string[] {
-    const w = WARDROBES[Math.abs(id) % WARDROBES.length];
-    const top = pick(w.tops, id, 1);
-    const layers = [w.body, w.head, 'eyes/human/adult/default/walk.png', pick(w.legs, id, 2), w.feet, top];
-    // галстук — только к «формальному» верху, через раз
-    if (w.ties && top.includes('formal') && id % 2 === 0) {
-        layers.push(w.ties);
+function buildLayers(body: WardrobeBody, topPath: string, legsPath: string, hair: string, tie: boolean): string[] {
+    const layers = [body.body, body.head, WARDROBE.eyes, legsPath, body.feet, topPath];
+    if (tie && body.tie) {
+        layers.push(body.tie);
     }
-    layers.push(`hair/${pick(HAIRS, id, 3)}/adult/walk.png`);
+    layers.push(hairPath(hair));
     return layers;
+}
+
+// образ из сохранённых настроек; null — если конфиг не проходит по гардеробу
+export function lookFromConfig(cfg: AvatarConfig | null | undefined): string[] | null {
+    if (!cfg) {
+        return null;
+    }
+    const body = WARDROBE.bodies[cfg.body];
+    const top = body?.tops[cfg.top];
+    const legs = body?.legs[cfg.legs];
+    if (!body || !top || !legs || !WARDROBE.hairs.includes(cfg.hair)) {
+        return null;
+    }
+    return buildLayers(body, top.path, legs.path, cfg.hair, cfg.tie === true);
+}
+
+// слои снизу вверх — фолбэк, пока пользователь не настроил образ
+export function lookFor(id: number): string[] {
+    const bodyKeys = Object.keys(WARDROBE.bodies);
+    const body = WARDROBE.bodies[bodyKeys[Math.abs(id) % bodyKeys.length]];
+    const topKey = pick(Object.keys(body.tops), id, 1);
+    const legsKey = pick(Object.keys(body.legs), id, 2);
+    const hair = pick(WARDROBE.hairs, id, 3);
+    // галстук — только к «формальному» верху, через раз
+    const tie = topKey === 'formal' && id % 2 === 0;
+    return buildLayers(body, body.tops[topKey].path, body.legs[legsKey].path, hair, tie);
 }
 
 // Режет лист на сетку кадров walk-анимации [направление 0-3][кадр 0-8].
@@ -115,11 +115,16 @@ function sliceWalk(tex: Texture): Texture[][] {
 
 export type AvatarLayers = Texture[][][]; // [слой][направление][кадр]
 
-export async function loadAvatar(id: number): Promise<AvatarLayers> {
+export function layerUrl(path: string): string {
+    return `${BASE}/${path}`;
+}
+
+export async function loadAvatar(id: number, cfg?: AvatarConfig | null): Promise<AvatarLayers> {
+    const paths = lookFromConfig(cfg) ?? lookFor(id);
     const layers: AvatarLayers = [];
-    for (const path of lookFor(id)) {
+    for (const path of paths) {
         try {
-            const tex: Texture = await Assets.load(`${BASE}/${path}`);
+            const tex: Texture = await Assets.load(layerUrl(path));
             tex.source.scaleMode = 'nearest';
             layers.push(sliceWalk(tex));
         } catch {
