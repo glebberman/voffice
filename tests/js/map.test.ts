@@ -100,6 +100,22 @@ describe('офисная карта: геометрия и правила', () =
         expect(map.zoneAt(map.spawn.x, map.spawn.y)).toBeNull();
     });
 
+    it('spotlight-плитка проходима, распознаётся и одна на карте', () => {
+        expect(map.isSpotlight(8, 9)).toBe(true);
+        expect(map.isWalkable(8, 9)).toBe(true);
+        expect(map.isSpotlight(map.spawn.x, map.spawn.y)).toBe(false);
+
+        let count = 0;
+        for (let y = 0; y < map.height; y++) {
+            for (let x = 0; x < map.width; x++) {
+                if (map.isSpotlight(x, y)) {
+                    count++;
+                }
+            }
+        }
+        expect(count).toBe(1);
+    });
+
     it('canHear: радиус в опенспейсе, изоляция приватной зоны', () => {
         expect(map.canHear(6, 8, 6 + CHAT_RADIUS, 8)).toBe(true);
         expect(map.canHear(6, 8, 6 + CHAT_RADIUS + 1, 8)).toBe(false);

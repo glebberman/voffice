@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\MapUpdateRequest;
 use App\Models\Message;
 use App\Models\Room;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -44,6 +46,27 @@ class RoomController extends Controller
             'lastPosition' => $user->last_room_id === $room->id && $user->last_x !== null && $user->last_y !== null
                 ? ['x' => $user->last_x, 'y' => $user->last_y]
                 : null,
+            'canEdit' => (bool) $user->is_admin,
         ]);
+    }
+
+    public function edit(Request $request, Room $room): Response
+    {
+        abort_unless((bool) $request->user()->is_admin, 403);
+
+        return Inertia::render('rooms/edit', [
+            'room' => $room->only(['id', 'slug', 'name', 'map']),
+            'rooms' => Room::query()->orderBy('id')->get(['slug', 'name']),
+        ]);
+    }
+
+    public function update(MapUpdateRequest $request, Room $room): RedirectResponse
+    {
+        $room->update([
+            'name' => $request->input('name'),
+            'map' => $request->input('map'),
+        ]);
+
+        return redirect()->route('rooms.show', $room);
     }
 }

@@ -26,6 +26,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('rooms', [RoomController::class, 'index'])->name('rooms.index');
     Route::get('rooms/{room:slug}', [RoomController::class, 'show'])->name('rooms.show');
+    Route::get('rooms/{room:slug}/edit', [RoomController::class, 'edit'])->name('rooms.edit');
+    Route::put('rooms/{room:slug}', [RoomController::class, 'update'])->name('rooms.update');
 
     Route::post('messages', [MessageController::class, 'store'])->name('messages.store');
     Route::post('position', [PositionController::class, 'update'])->name('position.update');

@@ -38,6 +38,8 @@ const COLORS = {
     plantPot: 0xa9714b,
     plant: 0x5fa867,
     zoneLabel: 0x6b6478,
+    spotlightFloor: 0xf4e9c8,
+    spotlight: 0xffe08a,
 };
 
 const AVATAR_COLORS = [0xe4572e, 0x17bebb, 0xffc914, 0x2e933c, 0x7768ae, 0xd1495b, 0x3b8ea5, 0xf26430];
@@ -490,6 +492,12 @@ export class OfficeScene {
                         g.circle(px + 16, py + 12, 9).fill(COLORS.plant);
                         g.circle(px + 10, py + 16, 6).fill(COLORS.plant);
                         g.circle(px + 22, py + 16, 6).fill(COLORS.plant);
+                        break;
+                    case '*':
+                        // spotlight-сцена: тёплый круг света
+                        g.rect(px, py, TILE, TILE).fill(COLORS.spotlightFloor);
+                        g.circle(px + TILE / 2, py + TILE / 2, TILE / 2 - 2).fill({ color: COLORS.spotlight, alpha: 0.5 });
+                        g.circle(px + TILE / 2, py + TILE / 2, TILE / 4).fill({ color: COLORS.spotlight, alpha: 0.7 });
                         break;
                 }
             }

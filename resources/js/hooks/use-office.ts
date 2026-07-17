@@ -569,7 +569,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 const sender = playersRef.current.get(p.id);
                 const sx = sender?.x ?? p.x;
                 const sy = sender?.y ?? p.y;
-                if (!map.canHear(me.x, me.y, sx, sy)) {
+                // со spotlight-плитки говорящего слышит вся комната
+                if (!map.isSpotlight(sx, sy) && !map.canHear(me.x, me.y, sx, sy)) {
                     return;
                 }
                 sceneRef.current?.showBubble(p.id, p.text);

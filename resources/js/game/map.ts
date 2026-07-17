@@ -4,7 +4,7 @@
 //  #  стена          D  рабочий стол     T  стол переговорки
 //  .  пол            K  кухонная стойка  S  диван
 //  :  плитка кухни   ,  ковёр переговорки
-//  ;  ковёр лаунжа   P  растение
+//  ;  ковёр лаунжа   P  растение         *  spotlight (сцена)
 
 export const TILE = 32;
 
@@ -52,7 +52,10 @@ export interface MapData {
     portals: PortalData[];
 }
 
-const WALKABLE = new Set(['.', ':', ',', ';']);
+const WALKABLE = new Set(['.', ':', ',', ';', '*']);
+
+// список тайлов для палитры редактора карт
+export const TILE_CHARS = ['.', '#', ':', ',', ';', 'D', 'K', 'T', 'S', 'P', '*'] as const;
 
 export function tilesBetween(ax: number, ay: number, bx: number, by: number): number {
     return Math.hypot(ax - bx, ay - by);
@@ -68,6 +71,7 @@ export interface GameMap {
     portals: PortalData[];
     tileAt(x: number, y: number): string;
     isWalkable(x: number, y: number): boolean;
+    isSpotlight(x: number, y: number): boolean;
     zoneAt(x: number, y: number): Zone | null;
     canHear(lx: number, ly: number, sx: number, sy: number): boolean;
     resolveSpawn(stored: { x: number; y: number } | null | undefined): { x: number; y: number };
@@ -93,6 +97,8 @@ export function makeMap(data: MapData): GameMap {
 
     const isWalkable = (x: number, y: number): boolean => WALKABLE.has(tileAt(x, y));
 
+    const isSpotlight = (x: number, y: number): boolean => tileAt(x, y) === '*';
+
     const zoneAt = (x: number, y: number): Zone | null => data.zones.find((z) => x >= z.x1 && x <= z.x2 && y >= z.y1 && y <= z.y2) ?? null;
 
     // Слышит ли слушатель в (lx, ly) говорящего в (sx, sy): приватная зона
@@ -116,6 +122,7 @@ export function makeMap(data: MapData): GameMap {
         portals: data.portals,
         tileAt,
         isWalkable,
+        isSpotlight,
         zoneAt,
         canHear,
         // сохранённая позиция может устареть (карта изменилась) — проверяем проходимость

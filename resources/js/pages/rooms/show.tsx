@@ -12,7 +12,7 @@ import { REACTIONS, useOffice, type ManualStatus } from '@/hooks/use-office';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
-import { BellRing, Footprints, MapPin, SendHorizontal, Shirt } from 'lucide-react';
+import { BellRing, Footprints, MapPin, Pencil, SendHorizontal, Shirt } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 const STATUS_DOT: Record<PlayerStatus, string> = {
@@ -40,6 +40,7 @@ interface RoomShowProps extends SharedData {
     room: RoomInfo;
     history: RoomMessage[];
     lastPosition: { x: number; y: number } | null;
+    canEdit: boolean;
 }
 
 // координаты прибытия из портала (?x=..&y=..) важнее сохранённой позиции
@@ -58,7 +59,7 @@ export default function RoomShow() {
 }
 
 function RoomView() {
-    const { auth, room, history, lastPosition } = usePage<RoomShowProps>().props;
+    const { auth, room, history, lastPosition, canEdit } = usePage<RoomShowProps>().props;
     const canvasHost = useRef<HTMLDivElement | null>(null);
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
@@ -146,6 +147,12 @@ function RoomView() {
                         {selfStatus === 'away' && <Badge variant="secondary">Отошёл</Badge>}
                         <div className="ml-auto flex items-center gap-2">
                             <span className="text-muted-foreground hidden text-xs xl:block">Стрелки/WASD · реакции 1–5 · X — объект</span>
+                            {canEdit && (
+                                <Button variant="outline" size="sm" className="h-8" onClick={() => router.visit(`/rooms/${room.slug}/edit`)}>
+                                    <Pencil className="size-4" />
+                                    Редактор
+                                </Button>
+                            )}
                             <Button variant="outline" size="sm" className="h-8" onClick={() => setEditorOpen(true)}>
                                 <Shirt className="size-4" />
                                 Персонаж
