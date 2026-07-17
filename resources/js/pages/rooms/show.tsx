@@ -1,4 +1,5 @@
 import { AvatarEditor } from '@/components/avatar-editor';
+import { CallPanel } from '@/components/call-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -85,6 +86,19 @@ function RoomView() {
         followPlayer,
         buzzPlayer,
         saveAvatar,
+        inCall,
+        micOn,
+        camOn,
+        screenOn,
+        selfSpeaking,
+        callError,
+        localStream,
+        callPeers,
+        joinCall,
+        leaveCall,
+        toggleMic,
+        toggleCamera,
+        toggleScreen,
     } = useOffice({ id: auth.user.id, name: auth.user.name, avatar: avatarCfg }, canvasHost, {
         roomId: room.id,
         map: room.map,
@@ -227,6 +241,23 @@ function RoomView() {
                             })}
                         </ul>
                     </div>
+
+                    <CallPanel
+                        inCall={inCall}
+                        micOn={micOn}
+                        camOn={camOn}
+                        screenOn={screenOn}
+                        selfSpeaking={selfSpeaking}
+                        callError={callError}
+                        localStream={localStream}
+                        peers={callPeers}
+                        selfName={auth.user.name}
+                        onJoin={joinCall}
+                        onLeave={leaveCall}
+                        onToggleMic={toggleMic}
+                        onToggleCamera={toggleCamera}
+                        onToggleScreen={toggleScreen}
+                    />
 
                     <div className="border-sidebar-border/70 dark:border-sidebar-border flex min-h-64 flex-1 flex-col rounded-xl border">
                         <div className="border-sidebar-border/70 dark:border-sidebar-border flex gap-1 border-b p-2">

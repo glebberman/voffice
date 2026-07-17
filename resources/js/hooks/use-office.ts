@@ -1,9 +1,10 @@
 import type { AvatarConfig } from '@/game/avatar';
-import { makeMap, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
+import { makeMap, tilesBetween, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
 import { findStep } from '@/game/path';
 import { OfficeScene } from '@/game/scene';
 import type {
     BuzzPayload,
+    CallPayload,
     ChatMessage,
     ChatPayload,
     Direction,
@@ -13,11 +14,24 @@ import type {
     PlayerStatus,
     ReactPayload,
     RoomMessage,
+    RtcSignalPayload,
     StatusPayload,
 } from '@/game/types';
 import { beacon, postJson } from '@/lib/api';
 import { getEcho } from '@/lib/echo';
+import { AudioMeter } from '@/webrtc/audio-meter';
+import { Mesh } from '@/webrtc/mesh';
+import { callPeers, volumeForDistance } from '@/webrtc/proximity';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+// одна видео-плитка звонка
+export interface CallPeer {
+    id: number;
+    name: string;
+    stream: MediaStream;
+    speaking: boolean;
+    volume: number;
+}
 
 const STEP_INTERVAL_MS = 150;
 const MAX_MESSAGES = 50;
@@ -76,6 +90,16 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const [nearbyObject, setNearbyObject] = useState<MapObjectData | null>(null);
     const [activeObject, setActiveObject] = useState<MapObjectData | null>(null);
 
+    // звонок по близости (WebRTC)
+    const [inCall, setInCall] = useState(false);
+    const [micOn, setMicOn] = useState(false);
+    const [camOn, setCamOn] = useState(false);
+    const [screenOn, setScreenOn] = useState(false);
+    const [selfSpeaking, setSelfSpeaking] = useState(false);
+    const [callError, setCallError] = useState<string | null>(null);
+    const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+    const [callPeersState, setCallPeersState] = useState<Map<number, CallPeer>>(new Map());
+
     // компонент комнаты монтируется заново на каждую комнату (key={room.id}),
     // поэтому карта и id комнаты фиксируются на весь жизненный цикл хука
     const [map] = useState(() => makeMap(options.map));
@@ -98,6 +122,21 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     onPortalRef.current = options.onPortal;
     const followTargetRef = useRef<number | null>(null);
     const buzzRef = useRef<(id: number) => void>(() => {});
+
+    // WebRTC-рефы: mesh, локальный поток, состав звонка, метры речи и
+    // отдельные ссылки на треки камеры/экрана для screen sharing
+    const meshRef = useRef<Mesh | null>(null);
+    const localStreamRef = useRef<MediaStream | null>(null);
+    const screenStreamRef = useRef<MediaStream | null>(null);
+    const inCallRef = useRef<Set<number>>(new Set());
+    const metersRef = useRef<Map<number, AudioMeter>>(new Map());
+    const callApiRef = useRef<{
+        join: () => Promise<void>;
+        leave: () => void;
+        toggleMic: () => void;
+        toggleCamera: () => void;
+        toggleScreen: () => Promise<void>;
+    } | null>(null);
 
     // эффективный статус (учитывает авто-away) — для колбэков без замыканий
     const manualRef = useRef<ManualStatus>('available');
@@ -158,8 +197,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         const channel = echo.join(channelName);
 
         if (import.meta.env.DEV) {
-            // отладка из консоли: window.__voffice.players
-            (window as unknown as Record<string, unknown>).__voffice = { players: playersRef.current };
+            // отладка из консоли: window.__voffice.players; Mesh — для E2E webrtc
+            (window as unknown as Record<string, unknown>).__voffice = { players: playersRef.current, Mesh };
         }
 
         const self = (): PlayerState =>
@@ -185,7 +224,14 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
         const announce = () => {
             const me = self();
-            channel.whisper('pos', { id: me.id, x: me.x, y: me.y, dir: me.dir, st: effectiveStatus() } satisfies MovePayload);
+            channel.whisper('pos', {
+                id: me.id,
+                x: me.x,
+                y: me.y,
+                dir: me.dir,
+                st: effectiveStatus(),
+                call: inCallRef.current.has(me.id),
+            } satisfies MovePayload);
         };
 
         const broadcastStatus = () => {
@@ -207,6 +253,200 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             channel.whisper('react', { id: me.id, emoji } satisfies ReactPayload);
         };
 
+        // --- WebRTC mesh ---
+        const mesh = new Mesh(userRef.current.id, {
+            sendSignal: (to, signal) => {
+                channel.whisper('rtc', { from: userRef.current.id, to, signal } satisfies RtcSignalPayload);
+            },
+            onRemoteStream: (peerId, stream) => {
+                const member = playersRef.current.get(peerId);
+                setCallPeersState((prev) => {
+                    const next = new Map(prev);
+                    const meta = next.get(peerId);
+                    next.set(peerId, {
+                        id: peerId,
+                        name: member?.name ?? meta?.name ?? '—',
+                        stream,
+                        speaking: meta?.speaking ?? false,
+                        volume: meta?.volume ?? 1,
+                    });
+                    return next;
+                });
+                if (stream.getAudioTracks().length > 0 && !metersRef.current.has(peerId)) {
+                    metersRef.current.set(
+                        peerId,
+                        new AudioMeter(stream, (speaking) =>
+                            setCallPeersState((prev) => {
+                                const meta = prev.get(peerId);
+                                if (!meta) {
+                                    return prev;
+                                }
+                                const next = new Map(prev);
+                                next.set(peerId, { ...meta, speaking });
+                                return next;
+                            }),
+                        ),
+                    );
+                }
+            },
+            onPeerClosed: (peerId) => {
+                metersRef.current.get(peerId)?.destroy();
+                metersRef.current.delete(peerId);
+                setCallPeersState((prev) => {
+                    if (!prev.has(peerId)) {
+                        return prev;
+                    }
+                    const next = new Map(prev);
+                    next.delete(peerId);
+                    return next;
+                });
+            },
+        });
+        meshRef.current = mesh;
+
+        // громкость удалённых собеседников по дистанции в тайлах
+        const updateVolumes = (me: PlayerState, ids: number[]) => {
+            setCallPeersState((prev) => {
+                let changed = false;
+                const next = new Map(prev);
+                for (const id of ids) {
+                    const p = playersRef.current.get(id);
+                    const meta = next.get(id);
+                    if (p && meta) {
+                        const vol = volumeForDistance(tilesBetween(me.x, me.y, p.x, p.y));
+                        if (Math.abs(meta.volume - vol) > 0.01) {
+                            next.set(id, { ...meta, volume: vol });
+                            changed = true;
+                        }
+                    }
+                }
+                return changed ? next : prev;
+            });
+        };
+
+        // пересчёт состава звонка по близости + громкостей
+        const recomputeCall = () => {
+            const me = self();
+            const others = [...playersRef.current.values()].filter((p) => p.id !== me.id);
+            const desired = callPeers(map, me, others, inCallRef.current);
+            mesh.updatePeers(desired);
+            updateVolumes(me, desired);
+        };
+
+        const isInCall = () => inCallRef.current.has(userRef.current.id);
+
+        const announceCall = () => {
+            channel.whisper('call', { id: userRef.current.id, inCall: isInCall() } satisfies CallPayload);
+        };
+
+        // реконсиляция состава звонка по флагу из heartbeat / call-события
+        const setPeerInCall = (id: number, active: boolean) => {
+            const had = inCallRef.current.has(id);
+            if (active) {
+                inCallRef.current.add(id);
+            } else {
+                inCallRef.current.delete(id);
+            }
+            if (had !== active) {
+                recomputeCall();
+            }
+        };
+
+        const localMeter = (stream: MediaStream) => {
+            metersRef.current.get(userRef.current.id)?.destroy();
+            metersRef.current.set(userRef.current.id, new AudioMeter(stream, setSelfSpeaking));
+        };
+
+        callApiRef.current = {
+            join: async () => {
+                if (isInCall()) {
+                    return;
+                }
+                setCallError(null);
+                let stream: MediaStream;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                } catch {
+                    try {
+                        // нет камеры — пробуем только микрофон
+                        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    } catch {
+                        setCallError('Нет доступа к камере и микрофону');
+                        return;
+                    }
+                }
+                localStreamRef.current = stream;
+                setLocalStream(stream);
+                mesh.setLocalStream(stream);
+                localMeter(stream);
+                inCallRef.current.add(userRef.current.id);
+                setInCall(true);
+                setMicOn(stream.getAudioTracks().some((t) => t.enabled));
+                setCamOn(stream.getVideoTracks().some((t) => t.enabled));
+                announceCall();
+                recomputeCall();
+            },
+            leave: () => {
+                inCallRef.current.delete(userRef.current.id);
+                mesh.updatePeers([]);
+                metersRef.current.get(userRef.current.id)?.destroy();
+                metersRef.current.delete(userRef.current.id);
+                localStreamRef.current?.getTracks().forEach((t) => t.stop());
+                screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+                localStreamRef.current = null;
+                screenStreamRef.current = null;
+                mesh.setLocalStream(null);
+                setLocalStream(null);
+                setInCall(false);
+                setMicOn(false);
+                setCamOn(false);
+                setScreenOn(false);
+                setSelfSpeaking(false);
+                announceCall();
+            },
+            toggleMic: () => {
+                const track = localStreamRef.current?.getAudioTracks()[0];
+                if (track) {
+                    track.enabled = !track.enabled;
+                    setMicOn(track.enabled);
+                }
+            },
+            toggleCamera: () => {
+                const track = localStreamRef.current?.getVideoTracks()[0];
+                if (track) {
+                    track.enabled = !track.enabled;
+                    setCamOn(track.enabled);
+                }
+            },
+            toggleScreen: async () => {
+                if (screenStreamRef.current) {
+                    // вернуться к камере
+                    screenStreamRef.current.getTracks().forEach((t) => t.stop());
+                    screenStreamRef.current = null;
+                    const cam = localStreamRef.current?.getVideoTracks()[0] ?? null;
+                    mesh.replaceVideoTrack(cam);
+                    setScreenOn(false);
+                    return;
+                }
+                let display: MediaStream;
+                try {
+                    display = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                } catch {
+                    return; // пользователь отменил выбор
+                }
+                screenStreamRef.current = display;
+                const screenTrack = display.getVideoTracks()[0];
+                mesh.replaceVideoTrack(screenTrack);
+                setScreenOn(true);
+                // системная кнопка «Остановить показ» тоже возвращает камеру
+                screenTrack.addEventListener('ended', () => {
+                    screenStreamRef.current = null;
+                    mesh.replaceVideoTrack(localStreamRef.current?.getVideoTracks()[0] ?? null);
+                    setScreenOn(false);
+                });
+            },
+        };
+
         // Whisper'ы приходят и от других вкладок этого же пользователя —
         // их heartbeat со старой позицией не должен телепортировать нашего
         // персонажа назад, поэтому свои id игнорируем.
@@ -224,6 +464,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                     known.status = p.st;
                     updateStatusState(p.id, p.st);
                 }
+                if (p.call !== undefined) {
+                    setPeerInCall(p.id, p.call);
+                }
+                recomputeCall(); // близость изменилась — пересчёт соединений и громкостей
             }
         };
 
@@ -259,6 +503,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                     delete next[member.id];
                     return next;
                 });
+                setPeerInCall(member.id, false); // рвём звонок с ушедшим
             })
             .listenForWhisper('pos', (p: MovePayload) => {
                 applyRemoteMove(p);
@@ -301,6 +546,23 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification(`${p.name} зовёт вас в офис!`, { body: 'Вас позвали в voffice' });
                 }
+            })
+            .listenForWhisper('call', (p: CallPayload) => {
+                if (p.id === userRef.current.id) {
+                    return;
+                }
+                setPeerInCall(p.id, p.inCall);
+                // новичку в звонке сообщаем, что мы тоже здесь (иначе он узнает
+                // о нас только со следующего heartbeat)
+                if (p.inCall && isInCall()) {
+                    announceCall();
+                }
+            })
+            .listenForWhisper('rtc', (p: RtcSignalPayload) => {
+                if (p.to !== userRef.current.id) {
+                    return;
+                }
+                void mesh.handleSignal(p.from, p.signal);
             })
             .listenForWhisper('chat', (p: ChatPayload) => {
                 const me = self();
@@ -395,7 +657,15 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
             playersRef.current.set(me.id, me);
             sceneRef.current?.movePlayer(me.id, me.x, me.y, me.dir);
-            channel.whisper('move', { id: me.id, x: me.x, y: me.y, dir: me.dir, st: effectiveStatus() } satisfies MovePayload);
+            channel.whisper('move', {
+                id: me.id,
+                x: me.x,
+                y: me.y,
+                dir: me.dir,
+                st: effectiveStatus(),
+                call: inCallRef.current.has(me.id),
+            } satisfies MovePayload);
+            recomputeCall(); // мой сдвиг мог изменить состав звонка
         };
 
         const onKeyDown = (e: KeyboardEvent) => {
@@ -490,6 +760,19 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             window.removeEventListener('blur', onBlur);
             window.removeEventListener('pointerdown', markActivity);
             window.removeEventListener('mousemove', markActivity);
+            // сворачиваем звонок: закрываем соединения, глушим метры и потоки
+            mesh.destroy();
+            for (const meter of metersRef.current.values()) {
+                meter.destroy();
+            }
+            metersRef.current.clear();
+            localStreamRef.current?.getTracks().forEach((t) => t.stop());
+            screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+            localStreamRef.current = null;
+            screenStreamRef.current = null;
+            inCallRef.current.clear();
+            meshRef.current = null;
+            callApiRef.current = null;
             echo.leave(channelName);
             scene.destroy();
             sceneRef.current = null;
@@ -566,6 +849,22 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         buzzRef.current(id);
     }, []);
 
+    const joinCall = useCallback(() => {
+        void callApiRef.current?.join();
+    }, []);
+    const leaveCall = useCallback(() => {
+        callApiRef.current?.leave();
+    }, []);
+    const toggleMic = useCallback(() => {
+        callApiRef.current?.toggleMic();
+    }, []);
+    const toggleCamera = useCallback(() => {
+        callApiRef.current?.toggleCamera();
+    }, []);
+    const toggleScreen = useCallback(() => {
+        void callApiRef.current?.toggleScreen();
+    }, []);
+
     const saveAvatar = useCallback(
         async (cfg: AvatarConfig) => {
             const saved = await postJson<AvatarConfig>('/avatar', { ...cfg });
@@ -601,5 +900,19 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         followPlayer,
         buzzPlayer,
         saveAvatar,
+        // звонок
+        inCall,
+        micOn,
+        camOn,
+        screenOn,
+        selfSpeaking,
+        callError,
+        localStream,
+        callPeers: callPeersState,
+        joinCall,
+        leaveCall,
+        toggleMic,
+        toggleCamera,
+        toggleScreen,
     };
 }

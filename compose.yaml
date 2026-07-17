@@ -92,6 +92,24 @@ services:
         depends_on:
             - app
 
+    # TURN/STUN-сервер для WebRTC вне localhost (за NAT). На localhost/LAN не
+    # обязателен — host-кандидатов достаточно; поднимается по профилю webrtc:
+    #   docker compose --profile webrtc up -d
+    coturn:
+        image: 'coturn/coturn:4.6'
+        profiles: ['webrtc']
+        network_mode: host
+        command:
+            - '-n'
+            - '--min-port=49160'
+            - '--max-port=49200'
+            - '--realm=voffice.local'
+            - '--server-name=voffice'
+            - '--lt-cred-mech'
+            - '--user=${TURN_USERNAME:-voffice}:${TURN_CREDENTIAL:-voffice-secret}'
+            - '--no-tls'
+            - '--no-dtls'
+
 networks:
     sail:
         driver: bridge

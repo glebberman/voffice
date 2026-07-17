@@ -1,3 +1,4 @@
+import type { RtcSignal } from '@/webrtc/mesh';
 import type { AvatarConfig } from './avatar';
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
@@ -37,6 +38,8 @@ export interface MovePayload {
     y: number;
     dir: Direction;
     st?: PlayerStatus;
+    // в звонке ли отправитель — для реконсиляции состава звонка по heartbeat
+    call?: boolean;
 }
 
 export interface ChatPayload {
@@ -66,4 +69,15 @@ export interface BuzzPayload {
     from: number;
     name: string;
     to: number;
+}
+
+export interface CallPayload {
+    id: number;
+    inCall: boolean;
+}
+
+export interface RtcSignalPayload {
+    from: number;
+    to: number;
+    signal: RtcSignal;
 }
