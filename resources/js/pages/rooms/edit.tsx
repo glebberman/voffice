@@ -2,12 +2,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { fillRect, MAX_MAP_SIZE, resizeRows, setTile, TILE_CHARS, type MapData, type MapObjectData, type PortalData } from '@/game/map';
+import {
+    fillRect,
+    MAX_MAP_SIZE,
+    resizeRows,
+    setTile,
+    TILE_CHARS,
+    type MapData,
+    type MapObjectData,
+    type PortalData,
+    type PropData,
+} from '@/game/map';
+import { PROP_SPECS, PROP_TYPES, propSheetUrl, propSpec } from '@/game/props';
 import { TILE_COLOR, TILE_LABEL } from '@/game/tile-colors';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Hand, Plus, Save, Square, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { Armchair, Hand, Plus, Save, Square, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface RoomInfo {
@@ -22,7 +33,7 @@ interface EditProps extends SharedData {
     rooms: { slug: string; name: string }[];
 }
 
-type Tool = 'paint' | 'rect' | 'spawn' | 'pan';
+type Tool = 'paint' | 'rect' | 'spawn' | 'pan' | 'prop';
 
 const OBJECT_TYPES = [
     { value: 'board', label: 'Доска' },
@@ -43,6 +54,8 @@ export default function RoomEdit() {
     const [spawn, setSpawn] = useState(room.map.spawn);
     const [objects, setObjects] = useState<MapObjectData[]>(room.map.objects);
     const [portals, setPortals] = useState<PortalData[]>(room.map.portals);
+    const [props, setProps] = useState<PropData[]>(room.map.props ?? []);
+    const [propType, setPropType] = useState<string>(PROP_TYPES[0]);
     const [tool, setTool] = useState<Tool>('paint');
     const [brush, setBrush] = useState<string>('.');
     const [zoom, setZoom] = useState(5); // индекс в ZOOM_LEVELS
@@ -53,6 +66,8 @@ export default function RoomEdit() {
     const [errors, setErrors] = useState<string[]>([]);
     const [sizeDraft, setSizeDraft] = useState({ w: room.map.rows[0].length, h: room.map.rows.length });
 
+    const sheetsRef = useRef<Map<string, HTMLImageElement>>(new Map());
+    const [sheetsReady, setSheetsReady] = useState(0);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const hostRef = useRef<HTMLDivElement | null>(null);
     const [canvasSize, setCanvasSize] = useState({ width: 800, height: 560 });
@@ -76,6 +91,20 @@ export default function RoomEdit() {
         const observer = new ResizeObserver(apply);
         observer.observe(host);
         return () => observer.disconnect();
+    }, []);
+
+    // спрайтшиты предметов грузим один раз; sheetsReady будит перерисовку
+    useEffect(() => {
+        for (const spec of Object.values(PROP_SPECS)) {
+            const url = propSheetUrl(spec);
+            if (sheetsRef.current.has(url)) {
+                continue;
+            }
+            const img = new Image();
+            img.onload = () => setSheetsReady((n) => n + 1);
+            img.src = url;
+            sheetsRef.current.set(url, img);
+        }
     }, []);
 
     const toTile = useCallback(
@@ -138,6 +167,30 @@ export default function RoomEdit() {
             ctx.stroke();
         }
 
+        // предметы: спрайт занимает основание + высокую часть над ним
+        ctx.imageSmoothingEnabled = false;
+        for (const prop of props) {
+            const spec = propSpec(prop.type);
+            if (!spec) {
+                continue;
+            }
+            const img = sheetsRef.current.get(propSheetUrl(spec));
+            const dx = prop.x * cell - pan.x;
+            const dy = (prop.y - spec.tall) * cell - pan.y;
+            const dw = spec.w * cell;
+            const dh = (spec.h + spec.tall) * cell;
+            if (img?.complete && img.naturalWidth > 0) {
+                ctx.drawImage(img, spec.sx, spec.sy, spec.w * 32, (spec.h + spec.tall) * 32, dx, dy, dw, dh);
+            } else {
+                ctx.fillStyle = 'rgba(124, 111, 174, 0.6)';
+                ctx.fillRect(dx, dy, dw, dh);
+            }
+            // основание (то, что блокирует проход) подсвечиваем рамкой
+            ctx.strokeStyle = 'rgba(43, 39, 51, 0.45)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(prop.x * cell - pan.x + 0.5, prop.y * cell - pan.y + 0.5, spec.w * cell - 1, spec.h * cell - 1);
+        }
+
         // маркеры рисуются обходом самих массивов — без поиска по каждой клетке
         const marker = (x: number, y: number, glyph: string) => {
             if (x < x0 - 1 || x > x1 + 1 || y < y0 - 1 || y > y1 + 1) {
@@ -170,11 +223,19 @@ export default function RoomEdit() {
             ctx.strokeStyle = '#ffc914';
             ctx.strokeRect(left * cell - pan.x, top * cell - pan.y, w * cell, h * cell);
         }
-    }, [rows, spawn, objects, portals, cell, pan, canvasSize, rectPreview, width, height]);
+    }, [rows, spawn, objects, portals, props, sheetsReady, cell, pan, canvasSize, rectPreview, width, height]);
 
     const applyTile = (x: number, y: number) => {
         if (tool === 'spawn') {
             setSpawn({ x, y });
+            return;
+        }
+        if (tool === 'prop') {
+            const spec = propSpec(propType);
+            if (!spec || y - spec.tall < 0 || x + spec.w > width || y + spec.h > height) {
+                return; // не помещается — основание или высокая часть вылезут за карту
+            }
+            setProps((prev) => [...prev, { id: `${propType}-${Date.now()}`, type: propType, x, y }]);
             return;
         }
         setRows((prev) => setTile(prev, x, y, brush));
@@ -198,6 +259,10 @@ export default function RoomEdit() {
         if (tool === 'rect') {
             drag.current = { mode: 'rect', startX: tile.x, startY: tile.y, panX: 0, panY: 0 };
             setRectPreview({ x0: tile.x, y0: tile.y, x1: tile.x, y1: tile.y });
+            return;
+        }
+        if (tool === 'prop' || tool === 'spawn') {
+            applyTile(tile.x, tile.y);
             return;
         }
         drag.current = { mode: 'paint', startX: tile.x, startY: tile.y, panX: 0, panY: 0 };
@@ -261,13 +326,19 @@ export default function RoomEdit() {
         setSpawn((prev) => ({ x: Math.min(prev.x, w - 2), y: Math.min(prev.y, h - 2) }));
         setObjects((prev) => prev.filter((o) => o.x < w && o.y < h));
         setPortals((prev) => prev.filter((p) => p.x < w && p.y < h));
+        setProps((prev) =>
+            prev.filter((p) => {
+                const spec = propSpec(p.type);
+                return spec ? p.x + spec.w <= w && p.y + spec.h <= h && p.y - spec.tall >= 0 : false;
+            }),
+        );
         setSizeDraft({ w, h });
     };
 
     const save = () => {
         setSaving(true);
         setErrors([]);
-        const map: MapData = { rows, spawn, zones: room.map.zones, objects, portals };
+        const map: MapData = { rows, spawn, zones: room.map.zones, objects, portals, props };
         router.put(
             `/rooms/${room.slug}`,
             { name, map: map as unknown as Record<string, never> },
@@ -374,6 +445,10 @@ export default function RoomEdit() {
                             <Button size="sm" variant={tool === 'spawn' ? 'default' : 'outline'} onClick={() => setTool('spawn')}>
                                 Спавн ⚑
                             </Button>
+                            <Button size="sm" variant={tool === 'prop' ? 'default' : 'outline'} onClick={() => setTool('prop')}>
+                                <Armchair className="size-3.5" />
+                                Предмет
+                            </Button>
                             <Button size="sm" variant={tool === 'pan' ? 'default' : 'outline'} onClick={() => setTool('pan')}>
                                 <Hand className="size-3.5" />
                             </Button>
@@ -411,6 +486,69 @@ export default function RoomEdit() {
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    <div className="border-sidebar-border/70 dark:border-sidebar-border rounded-xl border p-4">
+                        <div className="mb-2 flex items-center">
+                            <h3 className="text-sm font-semibold">Предметы 🪑</h3>
+                            <span className="text-muted-foreground ml-auto text-xs">{props.length} шт.</span>
+                        </div>
+                        <p className="text-muted-foreground mb-2 text-xs">
+                            Выберите предмет и кликните по карте. Основание блокирует проход, высокая часть — нет: за ней можно пройти.
+                        </p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {PROP_TYPES.map((type) => {
+                                const spec = PROP_SPECS[type];
+                                return (
+                                    <button
+                                        key={type}
+                                        type="button"
+                                        onClick={() => {
+                                            setPropType(type);
+                                            setTool('prop');
+                                        }}
+                                        className={`rounded-md border px-2 py-1 text-left text-xs ${
+                                            propType === type && tool === 'prop' ? 'ring-primary ring-2' : ''
+                                        }`}
+                                    >
+                                        <span className="block truncate">{spec.label}</span>
+                                        <span className="text-muted-foreground">
+                                            {spec.w}×{spec.h}
+                                            {spec.tall > 0 ? ` · высота +${spec.tall}` : ''}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {props.length > 0 && (
+                            <div className="mt-3 flex max-h-48 flex-col gap-1 overflow-y-auto">
+                                {props.map((prop, i) => (
+                                    <div key={prop.id} className="flex items-center gap-1.5 text-xs">
+                                        <span className="flex-1 truncate">{propSpec(prop.type)?.label ?? prop.type}</span>
+                                        <CoordInput
+                                            label="x"
+                                            value={prop.x}
+                                            max={width - 1}
+                                            onChange={(v) => setProps((p) => p.map((o, j) => (j === i ? { ...o, x: v } : o)))}
+                                        />
+                                        <CoordInput
+                                            label="y"
+                                            value={prop.y}
+                                            max={height - 1}
+                                            onChange={(v) => setProps((p) => p.map((o, j) => (j === i ? { ...o, y: v } : o)))}
+                                        />
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="size-6"
+                                            onClick={() => setProps((p) => p.filter((_, j) => j !== i))}
+                                        >
+                                            <Trash2 className="size-3" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <ListEditor

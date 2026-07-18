@@ -1,7 +1,8 @@
-import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Application, Assets, Container, Graphics, GraphicsContext, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { CHAT_RADIUS, TILE, type GameMap, type MapObjectType } from './map';
+import { propBaseRect, propSheetUrl, propSpec, propTallRect } from './props';
 import type { Direction, PlayerState, PlayerStatus } from './types';
 
 function sameRange(a: ChunkRange, b: ChunkRange): boolean {
@@ -31,6 +32,12 @@ const STATUS_COLORS: Record<PlayerStatus, number> = {
 };
 
 const REACTION_TTL_MS = 1600;
+
+// овал прозрачности вокруг своего персонажа, когда он заходит за
+// высокий предмет или за верхушку стены
+const CUTOUT_RX = 34;
+const CUTOUT_RY = 44;
+const GHOST_ALPHA = 0.32;
 
 const COLORS = {
     floor: 0xede7dc,
@@ -96,7 +103,16 @@ export class OfficeScene {
     // а не stage (stage остаётся системой координат экрана).
     private world = new Container();
     private mapLayer = new Container();
+    private propBaseLayer = new Container(); // основания предметов — под игроками
     private playerLayer = new Container();
+    // Всё, за что можно зайти: верхушки стен и высокие части предметов.
+    // Рисуется ПОВЕРХ игроков, поэтому персонаж за ними скрывается.
+    private overheadLayer = new Container();
+    // Полупрозрачная копия overhead, видимая только внутри овала вокруг своего
+    // персонажа: overheadLayer маскируется инверсно, ghost — прямо.
+    private overheadGhost = new Container();
+    private cutoutMask = new Graphics();
+    private ghostMask = new Graphics();
     private proximityRing = new Graphics();
     private selfId: number | null = null;
     private destroyed = false;
@@ -108,7 +124,7 @@ export class OfficeScene {
     private pings: { node: Text; age: number }[] = [];
     private viewport = { ...DEFAULT_VIEWPORT };
     private camera: Point = { x: 0, y: 0 };
-    private chunks = new Map<string, Graphics>();
+    private chunks = new Map<string, { base: Graphics; crown: Graphics; ghost: Graphics }>();
     private chunkGrid: Size;
     private chunkRange: ChunkRange | null = null;
 
@@ -153,19 +169,81 @@ export class OfficeScene {
         this.proximityRing.visible = false;
         this.playerLayer.sortableChildren = true; // кто ниже по карте — тот поверх
 
-        // порядок слоёв как прежде: карта → зоны → порталы → кольцо → игроки → объекты
+        // порядок слоёв: карта → зоны → порталы → кольцо → основания предметов
+        // → игроки → высокие части (overhead) → объекты
         this.world.addChild(this.mapLayer);
         this.drawZoneLabels();
         this.drawPortals();
         this.world.addChild(this.proximityRing);
+        this.world.addChild(this.propBaseLayer);
         this.world.addChild(this.playerLayer);
+        this.world.addChild(this.overheadLayer);
+        this.world.addChild(this.overheadGhost);
         this.drawObjects();
         this.app.stage.addChild(this.world);
+
+        // овал-вырез: overhead виден везде, КРОМЕ овала, а ghost — только внутри
+        this.overheadGhost.alpha = GHOST_ALPHA;
+        this.world.addChild(this.cutoutMask, this.ghostMask);
+        this.overheadLayer.setMask({ mask: this.cutoutMask, inverse: true });
+        this.overheadGhost.mask = this.ghostMask;
+        this.drawCutout(-9999, -9999);
+
+        this.drawProps();
 
         this.updateChunks();
         this.centerCameraOnSelf(true);
 
         this.app.ticker.add((ticker) => this.tick(ticker.deltaMS));
+    }
+
+    /**
+     * Предметы обстановки: основание уходит под игроков, высокая часть —
+     * в overhead (и в его полупрозрачную копию), чтобы за ней можно было
+     * проходить и персонаж просвечивал сквозь овал.
+     */
+    private drawProps(): void {
+        for (const prop of this.map.props) {
+            const spec = propSpec(prop.type);
+            if (!spec) {
+                continue;
+            }
+
+            const url = propSheetUrl(spec);
+            Assets.load(url)
+                .then((texture: Texture) => {
+                    if (this.destroyed) {
+                        return;
+                    }
+                    texture.source.scaleMode = 'nearest';
+
+                    const base = propBaseRect(spec);
+                    const baseSprite = new Sprite(new Texture({ source: texture.source, frame: new Rectangle(base.x, base.y, base.width, base.height) }));
+                    baseSprite.position.set(prop.x * TILE, prop.y * TILE);
+                    this.propBaseLayer.addChild(baseSprite);
+
+                    const tall = propTallRect(spec);
+                    if (!tall) {
+                        return;
+                    }
+                    const tallTexture = new Texture({ source: texture.source, frame: new Rectangle(tall.x, tall.y, tall.width, tall.height) });
+                    for (const layer of [this.overheadLayer, this.overheadGhost]) {
+                        const sprite = new Sprite(tallTexture);
+                        sprite.position.set(prop.x * TILE, (prop.y - spec.tall) * TILE);
+                        layer.addChild(sprite);
+                    }
+                })
+                .catch(() => {
+                    // спрайтшита нет — предмет просто не отрисуется
+                });
+        }
+    }
+
+    /** Перерисовывает овал-вырез вокруг точки (мировые координаты). */
+    private drawCutout(x: number, y: number): void {
+        for (const mask of [this.cutoutMask, this.ghostMask]) {
+            mask.clear().ellipse(x, y, CUTOUT_RX, CUTOUT_RY).fill(0xffffff);
+        }
     }
 
     /** Состояние камеры — для отладки и e2e-проверок. */
@@ -487,6 +565,8 @@ export class OfficeScene {
 
             if (id === this.selfId) {
                 this.proximityRing.position.set(sprite.root.x, sprite.root.y);
+                // овал держится на середине роста персонажа, а не на ногах
+                this.drawCutout(sprite.root.x, sprite.root.y - 14);
             }
         }
 
@@ -561,10 +641,12 @@ export class OfficeScene {
         }
         this.chunkRange = range;
 
-        for (const [id, graphics] of this.chunks) {
+        for (const [id, parts] of this.chunks) {
             const [cx, cy] = id.split(':').map(Number);
             if (!chunkRangeContains(range, cx, cy)) {
-                graphics.destroy();
+                parts.base.destroy();
+                parts.crown.destroy();
+                parts.ghost.destroy();
                 this.chunks.delete(id);
             }
         }
@@ -573,17 +655,24 @@ export class OfficeScene {
             for (let cx = range.x0; cx <= range.x1; cx++) {
                 const id = `${cx}:${cy}`;
                 if (!this.chunks.has(id)) {
-                    const graphics = this.drawChunk(cx, cy);
-                    this.chunks.set(id, graphics);
-                    this.mapLayer.addChild(graphics);
+                    const parts = this.drawChunk(cx, cy);
+                    this.chunks.set(id, parts);
+                    this.mapLayer.addChild(parts.base);
+                    this.overheadLayer.addChild(parts.crown);
+                    this.overheadGhost.addChild(parts.ghost);
                 }
             }
         }
     }
 
-    /** Рисует один чанк карты (CHUNK_TILES × CHUNK_TILES тайлов). */
-    private drawChunk(cx: number, cy: number): Graphics {
+    /**
+     * Рисует один чанк карты (CHUNK_TILES × CHUNK_TILES тайлов).
+     * Возвращает две части: низ (под игроками) и верхушки стен (над ними).
+     * Верхушка и её полупрозрачная копия делят один GraphicsContext.
+     */
+    private drawChunk(cx: number, cy: number): { base: Graphics; crown: Graphics; ghost: Graphics } {
         const g = new Graphics();
+        const crownContext = new GraphicsContext();
         const startX = cx * CHUNK_TILES;
         const startY = cy * CHUNK_TILES;
         const endX = Math.min(startX + CHUNK_TILES, this.map.width);
@@ -607,6 +696,15 @@ export class OfficeScene {
                               ? COLORS.floor
                               : COLORS.floorAlt;
                 g.rect(px, py, TILE, TILE).fill(baseFloor);
+
+                // верхушка стены: рисуем её НАД клеткой со стеной, если сверху
+                // не стена. Клетка остаётся проходимой — за стеной можно пройти
+                if (this.map.isWallCrown(x, y - 1) && y > 0) {
+                    const cy2 = (y - 1) * TILE;
+                    crownContext.rect(px, cy2, TILE, TILE).fill(COLORS.wall);
+                    crownContext.rect(px, cy2, TILE, 7).fill(COLORS.wallTop);
+                    crownContext.rect(px, cy2 + TILE - 3, TILE, 3).fill({ color: 0x2b2733, alpha: 0.35 });
+                }
 
                 switch (ch) {
                     case '#':
@@ -645,7 +743,7 @@ export class OfficeScene {
             }
         }
 
-        return g;
+        return { base: g, crown: new Graphics(crownContext), ghost: new Graphics(crownContext) };
     }
 
     setObjectHighlight(id: string | null): void {

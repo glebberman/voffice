@@ -1,3 +1,5 @@
+import { PROP_SPECS } from './props';
+
 // Карта комнаты приезжает с сервера (rooms.map, исходники в resources/maps/*.json).
 // Каждый символ — тайл 32×32:
 //
@@ -44,12 +46,26 @@ export interface PortalData {
     ty: number;
 }
 
+/**
+ * Предмет обстановки: занимает прямоугольник клеток (основание блокирует
+ * проход), а его спрайт может быть выше основания — за высокой частью
+ * персонаж проходит, и она рисуется поверх него. Размеры берутся из
+ * каталога по `type`, поэтому в карте хранится только тип и позиция.
+ */
+export interface PropData {
+    id: string;
+    type: string;
+    x: number; // левый верхний тайл ОСНОВАНИЯ
+    y: number;
+}
+
 export interface MapData {
     rows: string[];
     spawn: { x: number; y: number };
     zones: Zone[];
     objects: MapObjectData[];
     portals: PortalData[];
+    props?: PropData[];
 }
 
 const WALKABLE = new Set(['.', ':', ',', ';', '*']);
@@ -126,8 +142,11 @@ export interface GameMap {
     zones: Zone[];
     objects: MapObjectData[];
     portals: PortalData[];
+    props: PropData[];
     tileAt(x: number, y: number): string;
     isWalkable(x: number, y: number): boolean;
+    /** Верхушка стены: тайл над стеной, за которым можно пройти. */
+    isWallCrown(x: number, y: number): boolean;
     isSpotlight(x: number, y: number): boolean;
     zoneAt(x: number, y: number): Zone | null;
     canHear(lx: number, ly: number, sx: number, sy: number): boolean;
@@ -152,7 +171,26 @@ export function makeMap(data: MapData): GameMap {
         return rows[y][x];
     };
 
-    const isWalkable = (x: number, y: number): boolean => WALKABLE.has(tileAt(x, y));
+    // клетки, занятые основаниями предметов (высокая часть остаётся проходимой)
+    const props = data.props ?? [];
+    const blocked = new Set<number>();
+    for (const prop of props) {
+        const spec = PROP_SPECS[prop.type];
+        if (!spec) {
+            continue;
+        }
+        for (let dy = 0; dy < spec.h; dy++) {
+            for (let dx = 0; dx < spec.w; dx++) {
+                blocked.add((prop.y + dy) * width + prop.x + dx);
+            }
+        }
+    }
+
+    const isWalkable = (x: number, y: number): boolean =>
+        WALKABLE.has(tileAt(x, y)) && !blocked.has(y * width + x);
+
+    // стена рисуется в два тайла: над ней «верхушка», за которой можно ходить
+    const isWallCrown = (x: number, y: number): boolean => tileAt(x, y) !== '#' && tileAt(x, y + 1) === '#';
 
     const isSpotlight = (x: number, y: number): boolean => tileAt(x, y) === '*';
 
@@ -177,8 +215,10 @@ export function makeMap(data: MapData): GameMap {
         zones: data.zones,
         objects: data.objects,
         portals: data.portals,
+        props,
         tileAt,
         isWalkable,
+        isWallCrown,
         isSpotlight,
         zoneAt,
         canHear,

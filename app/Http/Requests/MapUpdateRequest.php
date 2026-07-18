@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class MapUpdateRequest extends FormRequest
@@ -12,6 +13,16 @@ class MapUpdateRequest extends FormRequest
     public function authorize(): bool
     {
         return (bool) $this->user()?->is_admin;
+    }
+
+    /**
+     * Каталог предметов — тот же файл, что читает клиент (game/props.ts).
+     *
+     * @return array<string, mixed>
+     */
+    private function propCatalogue(): array
+    {
+        return json_decode(file_get_contents(resource_path('props.json')), true)['items'] ?? [];
     }
 
     /**
@@ -38,6 +49,13 @@ class MapUpdateRequest extends FormRequest
             'map.objects.*.url' => ['required', 'url', 'max:500'],
             'map.objects.*.x' => ['required', 'integer', 'min:0'],
             'map.objects.*.y' => ['required', 'integer', 'min:0'],
+            // предметы обстановки: тип берётся из каталога resources/props.json,
+            // размеры оттуда же — в карте хранится только тип и позиция
+            'map.props' => ['sometimes', 'array', 'max:2000'],
+            'map.props.*.id' => ['required', 'string', 'max:64'],
+            'map.props.*.type' => ['required', 'string', Rule::in(array_keys($this->propCatalogue()))],
+            'map.props.*.x' => ['required', 'integer', 'min:0'],
+            'map.props.*.y' => ['required', 'integer', 'min:0'],
             'map.portals' => ['present', 'array'],
             'map.portals.*.x' => ['required', 'integer', 'min:0'],
             'map.portals.*.y' => ['required', 'integer', 'min:0'],
@@ -84,6 +102,22 @@ class MapUpdateRequest extends FormRequest
                 foreach ($map['portals'] ?? [] as $i => $portal) {
                     if (! $inBounds($portal['x'] ?? -1, $portal['y'] ?? -1)) {
                         $validator->errors()->add("map.portals.{$i}", 'Портал за пределами карты');
+                    }
+                }
+
+                // предмет должен целиком помещаться: и основание, и высокая часть
+                $catalogue = $this->propCatalogue();
+                foreach ($map['props'] ?? [] as $i => $prop) {
+                    $spec = $catalogue[$prop['type'] ?? ''] ?? null;
+                    if (! $spec) {
+                        continue; // недопустимый тип уже поймали правила выше
+                    }
+                    $x = $prop['x'] ?? -1;
+                    $y = $prop['y'] ?? -1;
+                    if (! $inBounds($x, $y) || ! $inBounds($x + $spec['w'] - 1, $y + $spec['h'] - 1)) {
+                        $validator->errors()->add("map.props.{$i}", 'Предмет за пределами карты');
+                    } elseif ($y - $spec['tall'] < 0) {
+                        $validator->errors()->add("map.props.{$i}", 'Высокой части предмета не хватает места сверху');
                     }
                 }
             },

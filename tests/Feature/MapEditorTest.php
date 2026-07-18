@@ -128,4 +128,36 @@ class MapEditorTest extends TestCase
         $badPortal['portals'] = [['x' => 1, 'y' => 1, 'to' => 'basement', 'label' => 'x', 'tx' => 1, 'ty' => 1]];
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $badPortal])->assertSessionHasErrors('map.portals.0.to');
     }
+
+    public function test_props_are_saved_and_validated(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // карта повыше: высокой части предмета нужно место сверху
+        $map = $this->validMap();
+        $map['rows'] = ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'];
+        $map['spawn'] = ['x' => 3, 'y' => 4];
+        $map['props'] = [['id' => 'c1', 'type' => 'cabinet', 'x' => 2, 'y' => 5]];
+
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'Офис', 'map' => $map])->assertRedirect();
+        $this->assertSame($map['props'], $this->office->fresh()->map['props']);
+
+        // тип не из каталога
+        $unknown = $map;
+        $unknown['props'] = [['id' => 'c1', 'type' => 'batut', 'x' => 2, 'y' => 5]];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $unknown])
+            ->assertSessionHasErrors('map.props.0.type');
+
+        // основание вылезает за границу карты
+        $oob = $map;
+        $oob['props'] = [['id' => 'c1', 'type' => 'cabinet', 'x' => 6, 'y' => 5]];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $oob])
+            ->assertSessionHasErrors('map.props.0');
+
+        // высокой части (+2 тайла) не хватает места сверху
+        $noRoom = $map;
+        $noRoom['props'] = [['id' => 'c1', 'type' => 'cabinet', 'x' => 2, 'y' => 1]];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $noRoom])
+            ->assertSessionHasErrors('map.props.0');
+    }
 }

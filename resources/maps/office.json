@@ -147,5 +147,121 @@
             "tx": 15,
             "ty": 8
         }
+    ],
+    "props": [
+        {
+            "id": "cooler-1",
+            "type": "cooler",
+            "x": 9,
+            "y": 7
+        },
+        {
+            "id": "cabinet-2",
+            "type": "cabinet",
+            "x": 6,
+            "y": 6
+        },
+        {
+            "id": "copier-3",
+            "type": "copier",
+            "x": 21,
+            "y": 8
+        },
+        {
+            "id": "coffee-maker-4",
+            "type": "coffee-maker",
+            "x": 12,
+            "y": 4
+        },
+        {
+            "id": "desk-5",
+            "type": "desk",
+            "x": 28,
+            "y": 8
+        },
+        {
+            "id": "desk-drawers-6",
+            "type": "desk-drawers",
+            "x": 34,
+            "y": 8
+        },
+        {
+            "id": "cabinet-7",
+            "type": "cabinet",
+            "x": 30,
+            "y": 12
+        },
+        {
+            "id": "cooler-8",
+            "type": "cooler",
+            "x": 27,
+            "y": 12
+        },
+        {
+            "id": "meeting-table-9",
+            "type": "meeting-table",
+            "x": 49,
+            "y": 12
+        },
+        {
+            "id": "tv-10",
+            "type": "tv",
+            "x": 50,
+            "y": 9
+        },
+        {
+            "id": "bin-11",
+            "type": "bin",
+            "x": 26,
+            "y": 8
+        },
+        {
+            "id": "desk-12",
+            "type": "desk",
+            "x": 31,
+            "y": 34
+        },
+        {
+            "id": "desk-drawers-13",
+            "type": "desk-drawers",
+            "x": 36,
+            "y": 34
+        },
+        {
+            "id": "cabinet-14",
+            "type": "cabinet",
+            "x": 42,
+            "y": 34
+        },
+        {
+            "id": "cooler-15",
+            "type": "cooler",
+            "x": 30,
+            "y": 33
+        },
+        {
+            "id": "meeting-table-16",
+            "type": "meeting-table",
+            "x": 47,
+            "y": 36
+        },
+        {
+            "id": "tv-17",
+            "type": "tv",
+            "x": 8,
+            "y": 33
+        },
+        {
+            "id": "coffee-maker-18",
+            "type": "coffee-maker",
+            "x": 20,
+            "y": 33
+        },
+        {
+            "id": "bin-19",
+            "type": "bin",
+            "x": 22,
+            "y": 34
+        }
     ]
 }
