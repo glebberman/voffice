@@ -50,6 +50,7 @@
 
 - [Архитектура: эфемерное против персистентного](explanation/arhitektura.md)
 - [Модель близости, зоны и звонки](explanation/proximity-i-zvonki.md)
+- [Камера и большие карты](explanation/kamera-i-bolshie-karty.md)
 - [Технологические решения и компромиссы](explanation/resheniya.md)
 
 ## С чего начать

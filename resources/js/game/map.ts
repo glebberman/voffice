@@ -57,6 +57,63 @@ const WALKABLE = new Set(['.', ':', ',', ';', '*']);
 // список тайлов для палитры редактора карт
 export const TILE_CHARS = ['.', '#', ':', ',', ';', 'D', 'K', 'T', 'S', 'P', '*'] as const;
 
+// предел размера карты (совпадает с валидацией MapUpdateRequest)
+export const MAX_MAP_SIZE = 512;
+
+/** Обводит карту сплошной стеной по периметру — инвариант всех карт. */
+export function sealPerimeter(rows: string[]): string[] {
+    const height = rows.length;
+    const width = rows[0]?.length ?? 0;
+    if (width === 0 || height === 0) {
+        return rows;
+    }
+    return rows.map((row, y) => (y === 0 || y === height - 1 ? '#'.repeat(width) : '#' + row.slice(1, width - 1) + '#'));
+}
+
+/**
+ * Меняет размер карты: обрезает лишнее или дополняет полом, после чего
+ * восстанавливает стену по периметру. Используется редактором.
+ */
+export function resizeRows(rows: string[], width: number, height: number): string[] {
+    const w = Math.max(3, Math.min(MAX_MAP_SIZE, Math.floor(width)));
+    const h = Math.max(3, Math.min(MAX_MAP_SIZE, Math.floor(height)));
+
+    const out: string[] = [];
+    for (let y = 0; y < h; y++) {
+        const src = rows[y] ?? '';
+        let row = '';
+        for (let x = 0; x < w; x++) {
+            row += src[x] ?? '.';
+        }
+        out.push(row);
+    }
+    return sealPerimeter(out);
+}
+
+/** Заменяет один тайл, не копируя всю сетку (важно на больших картах). */
+export function setTile(rows: string[], x: number, y: number, ch: string): string[] {
+    if (y < 0 || y >= rows.length || x < 0 || x >= rows[y].length || rows[y][x] === ch) {
+        return rows;
+    }
+    const next = rows.slice();
+    next[y] = rows[y].slice(0, x) + ch + rows[y].slice(x + 1);
+    return next;
+}
+
+/** Заливает прямоугольник одним тайлом (инструмент «прямоугольник»). */
+export function fillRect(rows: string[], x0: number, y0: number, x1: number, y1: number, ch: string): string[] {
+    const left = Math.max(0, Math.min(x0, x1));
+    const right = Math.min((rows[0]?.length ?? 1) - 1, Math.max(x0, x1));
+    const top = Math.max(0, Math.min(y0, y1));
+    const bottom = Math.min(rows.length - 1, Math.max(y0, y1));
+
+    const next = rows.slice();
+    for (let y = top; y <= bottom; y++) {
+        next[y] = next[y].slice(0, left) + ch.repeat(right - left + 1) + next[y].slice(right + 1);
+    }
+    return next;
+}
+
 export function tilesBetween(ax: number, ay: number, bx: number, by: number): number {
     return Math.hypot(ax - bx, ay - by);
 }

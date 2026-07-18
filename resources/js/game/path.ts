@@ -8,9 +8,16 @@ const STEPS: { dir: Direction; dx: number; dy: number }[] = [
     { dir: 'right', dx: 1, dy: 0 },
 ];
 
-// Первый шаг кратчайшего пути из from к любой проходимой клетке,
-// соседней с target (для режима «следовать»). null — путь не нужен
-// (уже рядом) или не существует.
+// Потолок обхода: на карте 512×512 недостижимая цель иначе заставила бы
+// перебрать все 262 тыс. клеток. Радиуса в несколько десятков тайлов хватает
+// для «следовать», а вкладка не встаёт колом.
+export const MAX_VISITED = 4000;
+
+/**
+ * Первый шаг кратчайшего пути из from к любой проходимой клетке, соседней с
+ * target (для режима «следовать»). null — путь не нужен (уже рядом), не
+ * существует или цель слишком далеко (превышен потолок обхода).
+ */
 export function findStep(map: GameMap, from: { x: number; y: number }, target: { x: number; y: number }): Direction | null {
     const near = (x: number, y: number) => Math.max(Math.abs(x - target.x), Math.abs(y - target.y)) <= 1;
     if (near(from.x, from.y)) {
@@ -20,23 +27,39 @@ export function findStep(map: GameMap, from: { x: number; y: number }, target: {
     const key = (x: number, y: number) => y * map.width + x;
     const firstStep = new Map<number, Direction>();
     firstStep.set(key(from.x, from.y), null as unknown as Direction);
-    const queue: { x: number; y: number }[] = [{ x: from.x, y: from.y }];
 
-    while (queue.length > 0) {
-        const cur = queue.shift()!;
+    // Очередь с указателем головы: Array.shift() сдвигает весь массив (O(n)),
+    // из-за чего BFS вырождался в O(n²) и подвешивал вкладку на больших картах.
+    const queueX: number[] = [from.x];
+    const queueY: number[] = [from.y];
+    let head = 0;
+    let visited = 0;
+
+    while (head < queueX.length) {
+        const cx = queueX[head];
+        const cy = queueY[head];
+        head++;
+
+        if (++visited > MAX_VISITED) {
+            return null;
+        }
+
+        const stepHere = firstStep.get(key(cx, cy));
+
         for (const { dir, dx, dy } of STEPS) {
-            const nx = cur.x + dx;
-            const ny = cur.y + dy;
+            const nx = cx + dx;
+            const ny = cy + dy;
             if (!map.isWalkable(nx, ny) || firstStep.has(key(nx, ny))) {
                 continue;
             }
             // направление первого шага наследуется по всему пути
-            const step = firstStep.get(key(cur.x, cur.y)) ?? dir;
+            const step = stepHere ?? dir;
             firstStep.set(key(nx, ny), step);
             if (near(nx, ny)) {
                 return step;
             }
-            queue.push({ x: nx, y: ny });
+            queueX.push(nx);
+            queueY.push(ny);
         }
     }
 

@@ -74,6 +74,36 @@ class MapEditorTest extends TestCase
         $this->assertSame(['#####', '#...#', '#.*.#', '#...#', '#####'], $this->office->map['rows']);
     }
 
+    public function test_large_map_is_accepted_and_oversized_rejected(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // 512×512 — заявленный предел «адекватной работы»
+        $big = [
+            'rows' => array_map(
+                fn (int $y) => $y === 0 || $y === 511 ? str_repeat('#', 512) : '#'.str_repeat('.', 510).'#',
+                range(0, 511),
+            ),
+            'spawn' => ['x' => 5, 'y' => 5],
+            'zones' => [],
+            'objects' => [],
+            'portals' => [],
+        ];
+
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'Кампус', 'map' => $big])->assertRedirect('/rooms/office');
+        $this->assertCount(512, $this->office->refresh()->map['rows']);
+
+        // 513 строк — уже за пределом
+        $tooTall = $big;
+        $tooTall['rows'][] = str_repeat('#', 512);
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $tooTall])->assertSessionHasErrors('map.rows');
+
+        // строка длиннее 512 символов — тоже
+        $tooWide = $big;
+        $tooWide['rows'][1] = '#'.str_repeat('.', 511).'#';
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $tooWide])->assertSessionHasErrors();
+    }
+
     public function test_map_geometry_is_validated(): void
     {
         $admin = User::factory()->admin()->create();

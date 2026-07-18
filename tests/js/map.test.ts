@@ -58,10 +58,15 @@ describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
     });
 
     it('к каждому объекту можно подойти на радиус взаимодействия', () => {
+        // ищем только в окрестности объекта: скан всей карты давал
+        // O(объекты × ширина × высота) и на больших картах это миллионы итераций
+        const reach = Math.ceil(OBJECT_RADIUS);
         for (const obj of map.objects) {
             let reachable = false;
-            for (let y = 0; y < map.height && !reachable; y++) {
-                for (let x = 0; x < map.width && !reachable; x++) {
+            for (let dy = -reach; dy <= reach && !reachable; dy++) {
+                for (let dx = -reach; dx <= reach && !reachable; dx++) {
+                    const x = obj.x + dx;
+                    const y = obj.y + dy;
                     if (map.isWalkable(x, y) && tilesBetween(x, y, obj.x, obj.y) <= OBJECT_RADIUS) {
                         reachable = true;
                     }

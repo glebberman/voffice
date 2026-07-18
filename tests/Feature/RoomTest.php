@@ -72,8 +72,10 @@ class RoomTest extends TestCase
                 $this->assertSame($width, strlen($row), "{$room->slug}: строки одинаковой ширины");
             }
 
+            // список проходимых тайлов должен совпадать с WALKABLE в
+            // MapUpdateRequest и map.ts — включая spotlight '*'
             $spawnTile = $map['rows'][$map['spawn']['y']][$map['spawn']['x']];
-            $this->assertContains($spawnTile, ['.', ':', ',', ';'], "{$room->slug}: спавн проходим");
+            $this->assertContains($spawnTile, ['.', ':', ',', ';', '*'], "{$room->slug}: спавн проходим");
         }
     }
 }

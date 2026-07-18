@@ -1,7 +1,20 @@
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
+import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { CHAT_RADIUS, TILE, type GameMap, type MapObjectType } from './map';
 import type { Direction, PlayerState, PlayerStatus } from './types';
+
+function sameRange(a: ChunkRange, b: ChunkRange): boolean {
+    return a.x0 === b.x0 && a.y0 === b.y0 && a.x1 === b.x1 && a.y1 === b.y1;
+}
+
+function measureViewport(host: HTMLElement): Size {
+    const rect = host.getBoundingClientRect();
+    return {
+        width: Math.round(rect.width) || DEFAULT_VIEWPORT.width,
+        height: Math.round(rect.height) || DEFAULT_VIEWPORT.height,
+    };
+}
 
 const OBJECT_EMOJI: Record<MapObjectType, string> = {
     board: '📝',
@@ -73,9 +86,16 @@ interface PlayerSprite {
 
 const MOVE_SPEED = TILE * 7; // px в секунду
 
+// пока хост не измерен (первый кадр), рендерим в этот размер
+const DEFAULT_VIEWPORT = { width: 800, height: 520 };
+
 export class OfficeScene {
     private app = new Application();
     private players = new Map<number, PlayerSprite>();
+    // Весь игровой мир лежит в отдельном контейнере: камера двигает именно его,
+    // а не stage (stage остаётся системой координат экрана).
+    private world = new Container();
+    private mapLayer = new Container();
     private playerLayer = new Container();
     private proximityRing = new Graphics();
     private selfId: number | null = null;
@@ -86,13 +106,31 @@ export class OfficeScene {
     private highlightedObject: string | null = null;
     private shakeTime = 0;
     private pings: { node: Text; age: number }[] = [];
+    private viewport = { ...DEFAULT_VIEWPORT };
+    private camera: Point = { x: 0, y: 0 };
+    private chunks = new Map<string, Graphics>();
+    private chunkGrid: Size;
+    private chunkRange: ChunkRange | null = null;
 
-    constructor(private map: GameMap) {}
+    constructor(private map: GameMap) {
+        this.chunkGrid = {
+            width: Math.ceil(map.width / CHUNK_TILES),
+            height: Math.ceil(map.height / CHUNK_TILES),
+        };
+    }
+
+    private get worldSize(): Size {
+        return { width: this.map.width * TILE, height: this.map.height * TILE };
+    }
 
     async init(host: HTMLElement): Promise<void> {
+        // вьюпорт = размер контейнера на странице, а не размер карты:
+        // иначе на большой карте канвас упёрся бы в предел WebGL (~16384 px)
+        this.viewport = measureViewport(host);
+
         await this.app.init({
-            width: this.map.width * TILE,
-            height: this.map.height * TILE,
+            width: this.viewport.width,
+            height: this.viewport.height,
             background: 0x37323f,
             antialias: true,
             resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -106,23 +144,57 @@ export class OfficeScene {
         }
 
         host.appendChild(this.app.canvas);
-        this.app.canvas.style.maxWidth = '100%';
-        this.app.canvas.style.height = 'auto';
+        this.app.canvas.style.display = 'block';
 
-        this.drawMap();
         this.proximityRing
             .circle(0, 0, CHAT_RADIUS * TILE)
             .fill({ color: 0xffffff, alpha: 0.05 })
             .stroke({ width: 1.5, color: 0xffffff, alpha: 0.18 });
         this.proximityRing.visible = false;
+        this.playerLayer.sortableChildren = true; // кто ниже по карте — тот поверх
+
+        // порядок слоёв как прежде: карта → зоны → порталы → кольцо → игроки → объекты
+        this.world.addChild(this.mapLayer);
         this.drawZoneLabels();
         this.drawPortals();
-        this.app.stage.addChild(this.proximityRing);
-        this.playerLayer.sortableChildren = true; // кто ниже по карте — тот поверх
-        this.app.stage.addChild(this.playerLayer);
+        this.world.addChild(this.proximityRing);
+        this.world.addChild(this.playerLayer);
         this.drawObjects();
+        this.app.stage.addChild(this.world);
+
+        this.updateChunks();
+        this.centerCameraOnSelf(true);
 
         this.app.ticker.add((ticker) => this.tick(ticker.deltaMS));
+    }
+
+    /** Состояние камеры — для отладки и e2e-проверок. */
+    debugState(): { viewport: Size; world: Size; camera: Point; worldPos: Point; chunks: number; selfId: number | null } {
+        return {
+            viewport: { ...this.viewport },
+            world: this.worldSize,
+            camera: { ...this.camera },
+            worldPos: { x: this.world.position.x, y: this.world.position.y },
+            chunks: this.chunks.size,
+            selfId: this.selfId,
+        };
+    }
+
+    /** Принудительный кадр: в фоновой вкладке тикер Pixi засыпает. */
+    forceTick(deltaMS = 16): void {
+        if (!this.destroyed && this.app.renderer) {
+            this.tick(deltaMS);
+        }
+    }
+
+    /** Пересчёт под новый размер контейнера (ResizeObserver на странице). */
+    resize(width: number, height: number): void {
+        if (this.destroyed || !this.app.renderer || width <= 0 || height <= 0) {
+            return;
+        }
+        this.viewport = { width: Math.round(width), height: Math.round(height) };
+        this.app.renderer.resize(this.viewport.width, this.viewport.height);
+        this.updateChunks();
     }
 
     destroy(): void {
@@ -133,6 +205,7 @@ export class OfficeScene {
             }
         }
         this.players.clear();
+        this.chunks.clear(); // сами Graphics уничтожит app.destroy вместе с деревом
         if (this.app.renderer) {
             this.app.destroy(true, { children: true });
         }
@@ -206,6 +279,8 @@ export class OfficeScene {
             this.selfId = state.id;
             this.proximityRing.visible = true;
             this.proximityRing.position.set(pos.x, pos.y);
+            // при входе в комнату камера сразу встаёт на персонажа, без «долёта»
+            this.centerCameraOnSelf(true);
         }
     }
 
@@ -349,15 +424,6 @@ export class OfficeScene {
     private tick(deltaMS: number): void {
         this.sceneTime += deltaMS;
 
-        // тряска сцены при buzz
-        if (this.shakeTime > 0) {
-            this.shakeTime = Math.max(0, this.shakeTime - deltaMS);
-            const power = (this.shakeTime / 500) * 5;
-            this.app.stage.position.set(Math.sin(this.sceneTime / 12) * power, Math.cos(this.sceneTime / 9) * power);
-        } else if (this.app.stage.position.x !== 0) {
-            this.app.stage.position.set(0, 0);
-        }
-
         // прыгающие маркеры locate
         if (this.pings.length > 0) {
             this.pings = this.pings.filter((ping) => {
@@ -423,6 +489,43 @@ export class OfficeScene {
                 this.proximityRing.position.set(sprite.root.x, sprite.root.y);
             }
         }
+
+        this.updateCamera(deltaMS);
+    }
+
+    /** Камера следует за своим персонажем; тряска — слагаемое поверх неё. */
+    private updateCamera(deltaMS: number): void {
+        const self = this.selfId === null ? null : this.players.get(this.selfId);
+        if (self) {
+            const target = cameraOffset({ x: self.root.x, y: self.root.y }, this.viewport, this.worldSize);
+            this.camera.x = approach(this.camera.x, target.x, deltaMS);
+            this.camera.y = approach(this.camera.y, target.y, deltaMS);
+        }
+
+        let shakeX = 0;
+        let shakeY = 0;
+        if (this.shakeTime > 0) {
+            this.shakeTime = Math.max(0, this.shakeTime - deltaMS);
+            const power = (this.shakeTime / 500) * 5;
+            shakeX = Math.sin(this.sceneTime / 12) * power;
+            shakeY = Math.cos(this.sceneTime / 9) * power;
+        }
+
+        // округление до пикселя — иначе на дробном смещении видны швы между тайлами
+        this.world.position.set(Math.round(this.camera.x + shakeX), Math.round(this.camera.y + shakeY));
+        this.updateChunks();
+    }
+
+    /** Ставит камеру на своего персонажа; instant — без сглаживания (при входе). */
+    private centerCameraOnSelf(instant = false): void {
+        const self = this.selfId === null ? null : this.players.get(this.selfId);
+        const center = self ? { x: self.root.x, y: self.root.y } : { x: this.worldSize.width / 2, y: this.worldSize.height / 2 };
+        const target = cameraOffset(center, this.viewport, this.worldSize);
+        if (instant) {
+            this.camera = target;
+            this.world.position.set(Math.round(target.x), Math.round(target.y));
+            this.updateChunks();
+        }
     }
 
     private faceDirection(sprite: PlayerSprite, dir: Direction): void {
@@ -444,11 +547,50 @@ export class OfficeScene {
         });
     }
 
-    private drawMap(): void {
-        const g = new Graphics();
+    /**
+     * Пересобирает набор нарисованных чанков под текущую камеру: недостающие
+     * рисует, уехавшие далеко — уничтожает. Вызывается только при пересечении
+     * границы чанка, а не каждый кадр.
+     */
+    private updateChunks(): void {
+        const chunkPx = CHUNK_TILES * TILE;
+        const range = visibleChunkRange(this.camera, this.viewport, chunkPx, this.chunkGrid);
 
-        for (let y = 0; y < this.map.height; y++) {
-            for (let x = 0; x < this.map.width; x++) {
+        if (this.chunkRange && sameRange(this.chunkRange, range)) {
+            return;
+        }
+        this.chunkRange = range;
+
+        for (const [id, graphics] of this.chunks) {
+            const [cx, cy] = id.split(':').map(Number);
+            if (!chunkRangeContains(range, cx, cy)) {
+                graphics.destroy();
+                this.chunks.delete(id);
+            }
+        }
+
+        for (let cy = range.y0; cy <= range.y1; cy++) {
+            for (let cx = range.x0; cx <= range.x1; cx++) {
+                const id = `${cx}:${cy}`;
+                if (!this.chunks.has(id)) {
+                    const graphics = this.drawChunk(cx, cy);
+                    this.chunks.set(id, graphics);
+                    this.mapLayer.addChild(graphics);
+                }
+            }
+        }
+    }
+
+    /** Рисует один чанк карты (CHUNK_TILES × CHUNK_TILES тайлов). */
+    private drawChunk(cx: number, cy: number): Graphics {
+        const g = new Graphics();
+        const startX = cx * CHUNK_TILES;
+        const startY = cy * CHUNK_TILES;
+        const endX = Math.min(startX + CHUNK_TILES, this.map.width);
+        const endY = Math.min(startY + CHUNK_TILES, this.map.height);
+
+        for (let y = startY; y < endY; y++) {
+            for (let x = startX; x < endX; x++) {
                 const ch = this.map.rows[y][x];
                 const px = x * TILE;
                 const py = y * TILE;
@@ -503,7 +645,7 @@ export class OfficeScene {
             }
         }
 
-        this.app.stage.addChild(g);
+        return g;
     }
 
     setObjectHighlight(id: string | null): void {
@@ -525,7 +667,7 @@ export class OfficeScene {
             const cy = portal.y * TILE + TILE / 2;
             pad.ellipse(cx, cy, 13, 9).fill({ color: 0x7c6fae, alpha: 0.55 }).stroke({ width: 2, color: 0xb9aef0, alpha: 0.9 });
             pad.ellipse(cx, cy, 7, 4).fill({ color: 0xe8e2ff, alpha: 0.8 });
-            this.app.stage.addChild(pad);
+            this.world.addChild(pad);
             this.portalPads.push(pad);
         }
     }
@@ -538,12 +680,12 @@ export class OfficeScene {
             const ring = new Graphics();
             ring.ellipse(cx, obj.y * TILE + TILE / 2, 15, 10).stroke({ width: 2, color: 0xffc914, alpha: 0.9 });
             ring.visible = false;
-            this.app.stage.addChild(ring);
+            this.world.addChild(ring);
 
             const icon = new Text({ text: OBJECT_EMOJI[obj.type] ?? OBJECT_EMOJI.link, style: { fontSize: 15 } });
             icon.anchor.set(0.5, 1);
             icon.position.set(cx, baseY);
-            this.app.stage.addChild(icon);
+            this.world.addChild(icon);
 
             this.objectNodes.set(obj.id, { icon, ring, baseY });
         }
@@ -564,7 +706,7 @@ export class OfficeScene {
             label.alpha = 0.75;
             label.anchor.set(0.5, 0);
             label.position.set(((zone.x1 + zone.x2 + 1) / 2) * TILE, zone.y1 * TILE + 4);
-            this.app.stage.addChild(label);
+            this.world.addChild(label);
         }
     }
 }

@@ -22,8 +22,11 @@ class MapUpdateRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:60'],
             'map' => ['required', 'array'],
-            'map.rows' => ['required', 'array', 'min:1', 'max:64'],
-            'map.rows.*' => ['required', 'string', 'max:64'],
+            // Предел 512×512 = 262 тыс. тайлов. Выше — уже неадекватно по памяти
+            // клиента; ниже упираться незачем: канвас-вьюпорт и чанковый рендер
+            // не зависят от размера карты.
+            'map.rows' => ['required', 'array', 'min:1', 'max:512'],
+            'map.rows.*' => ['required', 'string', 'max:512'],
             'map.spawn' => ['required', 'array'],
             'map.spawn.x' => ['required', 'integer', 'min:0'],
             'map.spawn.y' => ['required', 'integer', 'min:0'],

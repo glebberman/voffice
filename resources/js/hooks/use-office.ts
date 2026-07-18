@@ -38,6 +38,8 @@ const MAX_MESSAGES = 50;
 const MAX_ROOM_MESSAGES = 100;
 const AWAY_AFTER_MS = 60_000;
 const POSITION_SAVE_MS = 30_000;
+// как часто максимум пересчитывать путь в режиме «следовать»
+const FOLLOW_REPATH_MS = 300;
 
 export const REACTIONS = ['👋', '❤️', '😂', '🎉', '👍'];
 
@@ -121,6 +123,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const onPortalRef = useRef(options.onPortal);
     onPortalRef.current = options.onPortal;
     const followTargetRef = useRef<number | null>(null);
+    const followPathRef = useRef<{ fromX: number; fromY: number; targetX: number; targetY: number; dir: Direction | null; at: number } | null>(null);
     const buzzRef = useRef<(id: number) => void>(() => {});
 
     // WebRTC-рефы: mesh, локальный поток, состав звонка, метры речи и
@@ -180,8 +183,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         sceneRef.current = scene;
         let cancelled = false;
 
-        if (canvasHost.current) {
-            scene.init(canvasHost.current).then(() => {
+        // вьюпорт подстраивается под контейнер: камера показывает столько мира,
+        // сколько влезает в доступную область страницы
+        let resizeObserver: ResizeObserver | null = null;
+        const host = canvasHost.current;
+
+        if (host) {
+            scene.init(host).then(() => {
                 if (cancelled) {
                     return;
                 }
@@ -189,6 +197,17 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 for (const p of playersRef.current.values()) {
                     scene.upsertPlayer(p, p.id === userRef.current.id);
                 }
+                // на момент init хост мог быть ещё не измерен — берём фактический размер
+                const rect = host.getBoundingClientRect();
+                scene.resize(rect.width, rect.height);
+
+                resizeObserver = new ResizeObserver((entries) => {
+                    const box = entries[0]?.contentRect;
+                    if (box) {
+                        scene.resize(box.width, box.height);
+                    }
+                });
+                resizeObserver.observe(host);
             });
         }
 
@@ -197,8 +216,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         const channel = echo.join(channelName);
 
         if (import.meta.env.DEV) {
-            // отладка из консоли: window.__voffice.players; Mesh — для E2E webrtc
-            (window as unknown as Record<string, unknown>).__voffice = { players: playersRef.current, Mesh };
+            // отладка из консоли: window.__voffice.players / .scene; Mesh — для E2E webrtc
+            (window as unknown as Record<string, unknown>).__voffice = { players: playersRef.current, Mesh, scene };
         }
 
         const self = (): PlayerState =>
@@ -706,6 +725,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             }
             e.preventDefault();
             followTargetRef.current = null; // ручное движение отменяет «следовать»
+            followPathRef.current = null;
             if (!pressedRef.current.includes(dir)) {
                 pressedRef.current.push(dir);
             }
@@ -728,6 +748,30 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         window.addEventListener('pointerdown', markActivity);
         window.addEventListener('mousemove', markActivity);
 
+        // BFS дорог на большой карте, поэтому направление кешируется и
+        // пересчитывается только когда мы сами сдвинулись, цель сменила клетку
+        // или прошло достаточно времени.
+        const followStep = (target: PlayerState): Direction | null => {
+            const me = self();
+            const cache = followPathRef.current;
+            const now = performance.now();
+            const fresh =
+                cache &&
+                cache.fromX === me.x &&
+                cache.fromY === me.y &&
+                cache.targetX === target.x &&
+                cache.targetY === target.y &&
+                now - cache.at < FOLLOW_REPATH_MS;
+
+            if (fresh) {
+                return cache.dir;
+            }
+
+            const dir = findStep(map, me, target);
+            followPathRef.current = { fromX: me.x, fromY: me.y, targetX: target.x, targetY: target.y, dir, at: now };
+            return dir;
+        };
+
         const moveLoop = setInterval(() => {
             const dir = pressedRef.current[pressedRef.current.length - 1];
             if (dir) {
@@ -740,9 +784,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 const target = playersRef.current.get(targetId);
                 if (!target) {
                     followTargetRef.current = null;
+                    followPathRef.current = null;
                     return;
                 }
-                const stepDir = findStep(map, self(), target);
+                const stepDir = followStep(target);
                 if (stepDir) {
                     tryStep(stepDir);
                 }
@@ -774,6 +819,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             inCallRef.current.clear();
             meshRef.current = null;
             callApiRef.current = null;
+            resizeObserver?.disconnect();
             echo.leave(channelName);
             scene.destroy();
             sceneRef.current = null;
@@ -844,6 +890,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
     const followPlayer = useCallback((id: number) => {
         followTargetRef.current = id;
+        followPathRef.current = null; // новая цель — кешированный путь неактуален
     }, []);
 
     const buzzPlayer = useCallback((id: number) => {

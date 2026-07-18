@@ -174,8 +174,13 @@ function RoomView() {
                             </Select>
                         </div>
                     </div>
-                    <div className="relative w-fit max-w-full">
-                        <div ref={canvasHost} className="border-sidebar-border/70 dark:border-sidebar-border overflow-hidden rounded-xl border" />
+                    {/* размер задаёт контейнер, канвас-вьюпорт подстраивается под него
+                        (раньше было наоборот: канвас был размером с карту) */}
+                    <div className="relative min-h-[420px] w-full flex-1">
+                        <div
+                            ref={canvasHost}
+                            className="border-sidebar-border/70 dark:border-sidebar-border absolute inset-0 overflow-hidden rounded-xl border"
+                        />
                         {nearbyObject && (
                             <div className="bg-background/90 absolute top-3 left-1/2 -translate-x-1/2 rounded-full border px-3 py-1 text-sm shadow-sm backdrop-blur">
                                 <span className="font-semibold">{nearbyObject.label}</span>
