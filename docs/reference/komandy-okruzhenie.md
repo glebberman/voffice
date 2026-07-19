@@ -11,15 +11,15 @@
 
 ## Разработка
 
-| Команда                                  | Что делает                     |
-| ---------------------------------------- | ------------------------------ |
-| `npm run dev`                            | Vite в режиме разработки (HMR) |
-| `npm run build`                          | продакшн-сборка фронтенда      |
-| `npm run format`                         | Prettier                       |
-| `npm run lint`                           | ESLint                         |
-| `php artisan migrate`                    | миграции                       |
-| `php artisan db:seed`                    | сидеры (комнаты)               |
-| `php artisan db:seed --class=RoomSeeder` | только комнаты                 |
+| Команда                                  | Что делает                        |
+| ---------------------------------------- | --------------------------------- |
+| `npm run dev`                            | Vite в режиме разработки (HMR)    |
+| `npm run build`                          | продакшн-сборка фронтенда         |
+| `npm run format`                         | Prettier                          |
+| `npm run lint`                           | ESLint                            |
+| `php artisan migrate`                    | миграции                          |
+| `php artisan db:seed`                    | сидеры (предметы, комнаты, юзеры) |
+| `php artisan db:seed --class=RoomSeeder` | только комнаты                    |
 
 В Docker выполняйте artisan-команды внутри контейнера:
 `docker compose exec app php artisan …`.

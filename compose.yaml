@@ -35,7 +35,17 @@ services:
             args:
                 WWWGROUP: '${WWWGROUP:-1000}'
         image: 'sail-8.4/app'
-        command: php artisan queue:listen --tries=1
+        # Именно listen, а не work: work держит одно соединение с SQLite, а
+        # через bind-mount на macOS долгоживущее соединение не видит записи,
+        # сделанные другими процессами, — воркер молча перестаёт забирать
+        # задачи. listen поднимает процесс (и соединение) заново на каждый цикл.
+        #
+        # Плата за это — загрузка Laravel на каждый цикл, а из bind-mount'а она
+        # идёт секунды (vendor читается в десятки раз медленнее, чем на хосте) и
+        # на холодной ФС легко превышала дефолтный таймаут дочернего процесса в
+        # 60 с — контейнер падал с ProcessTimedOutException. Отсюда запас.
+        command: php artisan queue:listen --tries=1 --timeout=300
+        restart: unless-stopped
         environment:
             WWWUSER: '${WWWUSER:-1000}'
             LARAVEL_SAIL: 1

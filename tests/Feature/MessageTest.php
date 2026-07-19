@@ -7,6 +7,7 @@ use App\Models\Message;
 use App\Models\Room;
 use App\Models\User;
 use Database\Seeders\RoomSeeder;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -55,6 +56,17 @@ class MessageTest extends TestCase
         ]);
 
         Event::assertDispatched(MessageSent::class, fn (MessageSent $e) => $e->message->body === 'Всем привет!');
+    }
+
+    public function test_message_does_not_depend_on_the_queue_worker(): void
+    {
+        // Через очередь чат получал задержку опроса и молча ломался, стоило
+        // контейнеру queue упасть: сообщения сохранялись, но не расходились.
+        $this->assertInstanceOf(
+            ShouldBroadcastNow::class,
+            new MessageSent(new Message(['room_id' => $this->office->id, 'body' => 'привет'])),
+            'MessageSent должен уходить в Reverb из запроса, а не через очередь',
+        );
     }
 
     public function test_message_is_validated(): void

@@ -73,11 +73,13 @@
 
 ```bash
 php artisan migrate           # схема
-php artisan db:seed           # DatabaseSeeder → RoomSeeder (комнаты)
+php artisan db:seed           # DatabaseSeeder → предметы, комнаты, тестовые юзеры
 ```
 
-Тестовые пользователи (`anya@voffice.test` — админ, `borya@voffice.test`) в
-сидер не входят — они созданы отдельно в dev-окружении. Пароль у обоих `password`.
+Тестовые пользователи (`anya@voffice.test` — админ, `borya@voffice.test`, пароль
+у обоих `password`) заводит `DevUserSeeder`. Он работает только в окружении
+`local`: пароль общеизвестный, в бою таких аккаунтов быть не должно. Уже
+изменённый пароль сидер не сбрасывает, так что гонять его повторно безопасно.
 
 ## Что где хранится (эфемерное vs персистентное)
 

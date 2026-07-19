@@ -13,5 +13,6 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(PropTypeSeeder::class);
         $this->call(RoomSeeder::class);
+        $this->call(DevUserSeeder::class); // только в local, см. сам сидер
     }
 }
