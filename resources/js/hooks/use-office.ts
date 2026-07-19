@@ -1,5 +1,6 @@
 import type { AvatarConfig } from '@/game/avatar';
 import { makeMap, tilesBetween, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
+import type { PropCatalogue } from '@/game/props';
 import { findStep } from '@/game/path';
 import { OfficeScene } from '@/game/scene';
 import type {
@@ -75,6 +76,8 @@ const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
 export interface OfficeOptions {
     roomId: number;
     map: MapData;
+    // каталог предметов приходит с сервера вместе с картой
+    propTypes: PropCatalogue;
     initialPosition: { x: number; y: number } | null;
     history: RoomMessage[];
     // вызывается, когда игрок наступает на портал
@@ -104,7 +107,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
     // компонент комнаты монтируется заново на каждую комнату (key={room.id}),
     // поэтому карта и id комнаты фиксируются на весь жизненный цикл хука
-    const [map] = useState(() => makeMap(options.map));
+    const [map] = useState(() => makeMap(options.map, options.propTypes));
     const roomId = options.roomId;
 
     const sceneRef = useRef<OfficeScene | null>(null);

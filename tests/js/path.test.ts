@@ -1,9 +1,14 @@
 import { makeMap, type MapData } from '@/game/map';
 import { findStep, MAX_VISITED } from '@/game/path';
+import type { PropCatalogue } from '@/game/props';
 import { describe, expect, it } from 'vitest';
 import officeData from '../../resources/maps/office.json';
+import catalogueFile from '../../resources/props.json';
 
-const office = makeMap(officeData as MapData);
+// каталог, которым сидируется таблица prop_types — предметы блокируют проход
+const CATALOGUE = catalogueFile.items as PropCatalogue;
+
+const office = makeMap(officeData as MapData, CATALOGUE);
 
 // маленькая карта с перегородкой: прямой путь вправо перекрыт
 const walled = makeMap({

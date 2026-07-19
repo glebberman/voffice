@@ -13,7 +13,7 @@ import {
     type PortalData,
     type PropData,
 } from '@/game/map';
-import { PROP_SPECS, PROP_TYPES, propSheetUrl, propSpec } from '@/game/props';
+import { propFits, propSheetUrl, propSpec, type PropCatalogue } from '@/game/props';
 import { TILE_COLOR, TILE_LABEL } from '@/game/tile-colors';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
@@ -31,6 +31,7 @@ interface RoomInfo {
 interface EditProps extends SharedData {
     room: RoomInfo;
     rooms: { slug: string; name: string }[];
+    propTypes: PropCatalogue;
 }
 
 type Tool = 'paint' | 'rect' | 'spawn' | 'pan' | 'prop';
@@ -46,7 +47,8 @@ const OBJECT_TYPES = [
 const ZOOM_LEVELS = [3, 5, 8, 12, 16, 22, 32];
 
 export default function RoomEdit() {
-    const { room, rooms } = usePage<EditProps>().props;
+    const { room, rooms, propTypes } = usePage<EditProps>().props;
+    const propKeys = Object.keys(propTypes);
 
     const [name, setName] = useState(room.name);
     // строки карты как есть: правка одной строки вместо копирования всей сетки
@@ -55,7 +57,7 @@ export default function RoomEdit() {
     const [objects, setObjects] = useState<MapObjectData[]>(room.map.objects);
     const [portals, setPortals] = useState<PortalData[]>(room.map.portals);
     const [props, setProps] = useState<PropData[]>(room.map.props ?? []);
-    const [propType, setPropType] = useState<string>(PROP_TYPES[0]);
+    const [propType, setPropType] = useState<string>(propKeys[0] ?? '');
     const [tool, setTool] = useState<Tool>('paint');
     const [brush, setBrush] = useState<string>('.');
     const [zoom, setZoom] = useState(5); // индекс в ZOOM_LEVELS
@@ -95,7 +97,7 @@ export default function RoomEdit() {
 
     // спрайтшиты предметов грузим один раз; sheetsReady будит перерисовку
     useEffect(() => {
-        for (const spec of Object.values(PROP_SPECS)) {
+        for (const spec of Object.values(propTypes)) {
             const url = propSheetUrl(spec);
             if (sheetsRef.current.has(url)) {
                 continue;
@@ -170,7 +172,7 @@ export default function RoomEdit() {
         // предметы: спрайт занимает основание + высокую часть над ним
         ctx.imageSmoothingEnabled = false;
         for (const prop of props) {
-            const spec = propSpec(prop.type);
+            const spec = propSpec(propTypes, prop.type);
             if (!spec) {
                 continue;
             }
@@ -231,9 +233,9 @@ export default function RoomEdit() {
             return;
         }
         if (tool === 'prop') {
-            const spec = propSpec(propType);
-            if (!spec || y - spec.tall < 0 || x + spec.w > width || y + spec.h > height) {
-                return; // не помещается — основание или высокая часть вылезут за карту
+            const spec = propSpec(propTypes, propType);
+            if (!spec || !propFits(spec, x, y, width, height)) {
+                return; // не помещается — основание или часть в воздухе вылезут за карту
             }
             setProps((prev) => [...prev, { id: `${propType}-${Date.now()}`, type: propType, x, y }]);
             return;
@@ -328,8 +330,8 @@ export default function RoomEdit() {
         setPortals((prev) => prev.filter((p) => p.x < w && p.y < h));
         setProps((prev) =>
             prev.filter((p) => {
-                const spec = propSpec(p.type);
-                return spec ? p.x + spec.w <= w && p.y + spec.h <= h && p.y - spec.tall >= 0 : false;
+                const spec = propSpec(propTypes, p.type);
+                return spec ? propFits(spec, p.x, p.y, w, h) : false;
             }),
         );
         setSizeDraft({ w, h });
@@ -494,11 +496,14 @@ export default function RoomEdit() {
                             <span className="text-muted-foreground ml-auto text-xs">{props.length} шт.</span>
                         </div>
                         <p className="text-muted-foreground mb-2 text-xs">
-                            Выберите предмет и кликните по карте. Основание блокирует проход, высокая часть — нет: за ней можно пройти.
+                            Выберите предмет и кликните по карте. Основание блокирует проход, часть в воздухе — нет: за ней можно пройти.{' '}
+                            <a href="/props" className="underline">
+                                Каталог предметов
+                            </a>
                         </p>
                         <div className="grid grid-cols-2 gap-1.5">
-                            {PROP_TYPES.map((type) => {
-                                const spec = PROP_SPECS[type];
+                            {propKeys.map((type) => {
+                                const spec = propTypes[type];
                                 return (
                                     <button
                                         key={type}
@@ -514,7 +519,7 @@ export default function RoomEdit() {
                                         <span className="block truncate">{spec.label}</span>
                                         <span className="text-muted-foreground">
                                             {spec.w}×{spec.h}
-                                            {spec.tall > 0 ? ` · высота +${spec.tall}` : ''}
+                                            {spec.tall > 0 ? ` · воздух +${spec.tall}` : ''}
                                         </span>
                                     </button>
                                 );
@@ -524,7 +529,7 @@ export default function RoomEdit() {
                             <div className="mt-3 flex max-h-48 flex-col gap-1 overflow-y-auto">
                                 {props.map((prop, i) => (
                                     <div key={prop.id} className="flex items-center gap-1.5 text-xs">
-                                        <span className="flex-1 truncate">{propSpec(prop.type)?.label ?? prop.type}</span>
+                                        <span className="flex-1 truncate">{propSpec(propTypes, prop.type)?.label ?? prop.type}</span>
                                         <CoordInput
                                             label="x"
                                             value={prop.x}

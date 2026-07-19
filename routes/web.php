@@ -3,6 +3,7 @@
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\PositionController;
+use App\Http\Controllers\PropTypeController;
 use App\Http\Controllers\RoomController;
 use App\Models\Room;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,12 @@ Route::middleware(['auth'])->group(function () {
     Route::get('rooms/{room:slug}', [RoomController::class, 'show'])->name('rooms.show');
     Route::get('rooms/{room:slug}/edit', [RoomController::class, 'edit'])->name('rooms.edit');
     Route::put('rooms/{room:slug}', [RoomController::class, 'update'])->name('rooms.update');
+
+    // каталог предметов обстановки (только админам — проверка в контроллере)
+    Route::get('props', [PropTypeController::class, 'index'])->name('props.index');
+    Route::post('props', [PropTypeController::class, 'store'])->name('props.store');
+    Route::put('props/{prop_type}', [PropTypeController::class, 'update'])->name('props.update');
+    Route::delete('props/{prop_type}', [PropTypeController::class, 'destroy'])->name('props.destroy');
 
     Route::post('messages', [MessageController::class, 'store'])->name('messages.store');
     Route::post('position', [PositionController::class, 'update'])->name('position.update');

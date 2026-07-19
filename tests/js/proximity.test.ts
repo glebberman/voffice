@@ -1,9 +1,14 @@
 import { CHAT_RADIUS, makeMap, type MapData } from '@/game/map';
+import type { PropCatalogue } from '@/game/props';
 import { callPeers, isInitiator, volumeForDistance } from '@/webrtc/proximity';
 import { describe, expect, it } from 'vitest';
 import officeData from '../../resources/maps/office.json';
+import catalogueFile from '../../resources/props.json';
 
-const office = makeMap(officeData as MapData);
+// каталог, которым сидируется таблица prop_types — предметы блокируют проход
+const CATALOGUE = catalogueFile.items as PropCatalogue;
+
+const office = makeMap(officeData as MapData, CATALOGUE);
 
 const at = (id: number, x: number, y: number) => ({ id, x, y });
 

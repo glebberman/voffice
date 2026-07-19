@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Room;
 use App\Models\User;
+use Database\Seeders\PropTypeSeeder;
 use Database\Seeders\RoomSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -20,6 +21,8 @@ class MapEditorTest extends TestCase
         parent::setUp();
 
         config(['inertia.testing.page_paths' => [resource_path('js/pages')]]);
+        // типы предметов — из каталога в БД: карта ссылается на них по slug
+        $this->seed(PropTypeSeeder::class);
         $this->seed(RoomSeeder::class);
         $this->office = Room::where('slug', 'office')->firstOrFail();
     }

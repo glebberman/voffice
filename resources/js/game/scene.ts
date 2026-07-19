@@ -1,6 +1,7 @@
 import { Application, Assets, Container, Graphics, GraphicsContext, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
+import { cutoutPolygon, GHOST_ALPHA, SPRITE_TOP } from './cutout';
 import { CHAT_RADIUS, TILE, type GameMap, type MapObjectType } from './map';
 import { propBaseRect, propSheetUrl, propSpec, propTallRect } from './props';
 import type { Direction, PlayerState, PlayerStatus } from './types';
@@ -32,12 +33,6 @@ const STATUS_COLORS: Record<PlayerStatus, number> = {
 };
 
 const REACTION_TTL_MS = 1600;
-
-// овал прозрачности вокруг своего персонажа, когда он заходит за
-// высокий предмет или за верхушку стены
-const CUTOUT_RX = 34;
-const CUTOUT_RY = 44;
-const GHOST_ALPHA = 0.32;
 
 const COLORS = {
     floor: 0xede7dc,
@@ -187,7 +182,7 @@ export class OfficeScene {
         this.world.addChild(this.cutoutMask, this.ghostMask);
         this.overheadLayer.setMask({ mask: this.cutoutMask, inverse: true });
         this.overheadGhost.mask = this.ghostMask;
-        this.drawCutout(-9999, -9999);
+        this.drawCutout(-9999, -9999, -9999);
 
         this.drawProps();
 
@@ -204,7 +199,7 @@ export class OfficeScene {
      */
     private drawProps(): void {
         for (const prop of this.map.props) {
-            const spec = propSpec(prop.type);
+            const spec = propSpec(this.map.catalogue, prop.type);
             if (!spec) {
                 continue;
             }
@@ -218,7 +213,9 @@ export class OfficeScene {
                     texture.source.scaleMode = 'nearest';
 
                     const base = propBaseRect(spec);
-                    const baseSprite = new Sprite(new Texture({ source: texture.source, frame: new Rectangle(base.x, base.y, base.width, base.height) }));
+                    const baseSprite = new Sprite(
+                        new Texture({ source: texture.source, frame: new Rectangle(base.x, base.y, base.width, base.height) }),
+                    );
                     baseSprite.position.set(prop.x * TILE, prop.y * TILE);
                     this.propBaseLayer.addChild(baseSprite);
 
@@ -239,10 +236,15 @@ export class OfficeScene {
         }
     }
 
-    /** Перерисовывает овал-вырез вокруг точки (мировые координаты). */
-    private drawCutout(x: number, y: number): void {
+    /**
+     * Перерисовывает овал-вырез вокруг точки (мировые координаты).
+     * `topY` — линия макушки: выше неё вырез не идёт, иначе просвечивало бы
+     * то, что стоит на карте выше персонажа, то есть за его спиной.
+     */
+    private drawCutout(x: number, y: number, topY: number): void {
+        const shape = cutoutPolygon(x, y, topY);
         for (const mask of [this.cutoutMask, this.ghostMask]) {
-            mask.clear().ellipse(x, y, CUTOUT_RX, CUTOUT_RY).fill(0xffffff);
+            mask.clear().poly(shape).fill(0xffffff);
         }
     }
 
@@ -566,7 +568,7 @@ export class OfficeScene {
             if (id === this.selfId) {
                 this.proximityRing.position.set(sprite.root.x, sprite.root.y);
                 // овал держится на середине роста персонажа, а не на ногах
-                this.drawCutout(sprite.root.x, sprite.root.y - 14);
+                this.drawCutout(sprite.root.x, sprite.root.y - 14, sprite.root.y - SPRITE_TOP);
             }
         }
 

@@ -1,4 +1,4 @@
-import { PROP_SPECS } from './props';
+import type { PropCatalogue } from './props';
 
 // Карта комнаты приезжает с сервера (rooms.map, исходники в resources/maps/*.json).
 // Каждый символ — тайл 32×32:
@@ -143,6 +143,8 @@ export interface GameMap {
     objects: MapObjectData[];
     portals: PortalData[];
     props: PropData[];
+    /** Каталог, которым разобраны props — сцене и редактору нужен тот же. */
+    catalogue: PropCatalogue;
     tileAt(x: number, y: number): string;
     isWalkable(x: number, y: number): boolean;
     /** Верхушка стены: тайл над стеной, за которым можно пройти. */
@@ -155,7 +157,12 @@ export interface GameMap {
     nearestObject(x: number, y: number): MapObjectData | null;
 }
 
-export function makeMap(data: MapData): GameMap {
+/**
+ * Каталог предметов передаётся явно: он живёт в БД и правится из браузера,
+ * поэтому «зашить» его в модуль нельзя. Пустой каталог = предметы неизвестны
+ * и проход не блокируют (так работают тесты, которым предметы не нужны).
+ */
+export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
     const rows = data.rows;
     const width = rows[0]?.length ?? 0;
     const height = rows.length;
@@ -175,7 +182,7 @@ export function makeMap(data: MapData): GameMap {
     const props = data.props ?? [];
     const blocked = new Set<number>();
     for (const prop of props) {
-        const spec = PROP_SPECS[prop.type];
+        const spec = catalogue[prop.type];
         if (!spec) {
             continue;
         }
@@ -186,8 +193,7 @@ export function makeMap(data: MapData): GameMap {
         }
     }
 
-    const isWalkable = (x: number, y: number): boolean =>
-        WALKABLE.has(tileAt(x, y)) && !blocked.has(y * width + x);
+    const isWalkable = (x: number, y: number): boolean => WALKABLE.has(tileAt(x, y)) && !blocked.has(y * width + x);
 
     // стена рисуется в два тайла: над ней «верхушка», за которой можно ходить
     const isWallCrown = (x: number, y: number): boolean => tileAt(x, y) !== '#' && tileAt(x, y + 1) === '#';
@@ -216,6 +222,7 @@ export function makeMap(data: MapData): GameMap {
         objects: data.objects,
         portals: data.portals,
         props,
+        catalogue,
         tileAt,
         isWalkable,
         isWallCrown,

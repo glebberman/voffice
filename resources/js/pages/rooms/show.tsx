@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { type AvatarConfig } from '@/game/avatar';
 import { type MapData, type PortalData } from '@/game/map';
+import { type PropCatalogue } from '@/game/props';
 import { type PlayerStatus, type RoomMessage } from '@/game/types';
 import { REACTIONS, useOffice, type ManualStatus } from '@/hooks/use-office';
 import AppLayout from '@/layouts/app-layout';
@@ -41,6 +42,7 @@ interface RoomShowProps extends SharedData {
     history: RoomMessage[];
     lastPosition: { x: number; y: number } | null;
     canEdit: boolean;
+    propTypes: PropCatalogue;
 }
 
 // координаты прибытия из портала (?x=..&y=..) важнее сохранённой позиции
@@ -59,7 +61,7 @@ export default function RoomShow() {
 }
 
 function RoomView() {
-    const { auth, room, history, lastPosition, canEdit } = usePage<RoomShowProps>().props;
+    const { auth, room, history, lastPosition, canEdit, propTypes } = usePage<RoomShowProps>().props;
     const canvasHost = useRef<HTMLDivElement | null>(null);
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
@@ -103,6 +105,7 @@ function RoomView() {
     } = useOffice({ id: auth.user.id, name: auth.user.name, avatar: avatarCfg }, canvasHost, {
         roomId: room.id,
         map: room.map,
+        propTypes,
         initialPosition: arrivalPosition() ?? lastPosition,
         history,
         onPortal: (portal: PortalData) => {

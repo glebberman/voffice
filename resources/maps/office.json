@@ -262,6 +262,18 @@
             "type": "bin",
             "x": 22,
             "y": 34
+        },
+        {
+            "id": "desk-vertical-21",
+            "type": "desk-vertical",
+            "x": 33,
+            "y": 27
+        },
+        {
+            "id": "desk-vertical-22",
+            "type": "desk-vertical",
+            "x": 39,
+            "y": 27
         }
     ]
 }

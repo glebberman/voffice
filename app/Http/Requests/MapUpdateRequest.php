@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\PropType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -15,14 +16,17 @@ class MapUpdateRequest extends FormRequest
         return (bool) $this->user()?->is_admin;
     }
 
+    /** @var array<string, mixed>|null кеш на время запроса: каталог читается дважды */
+    private ?array $catalogue = null;
+
     /**
-     * Каталог предметов — тот же файл, что читает клиент (game/props.ts).
+     * Каталог предметов — тот же, что уезжает клиенту (game/props.ts).
      *
      * @return array<string, mixed>
      */
     private function propCatalogue(): array
     {
-        return json_decode(file_get_contents(resource_path('props.json')), true)['items'] ?? [];
+        return $this->catalogue ??= PropType::catalogue();
     }
 
     /**

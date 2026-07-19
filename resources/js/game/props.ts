@@ -1,10 +1,9 @@
-import catalogue from '../../props.json';
+import { TILE } from './map';
 
-// Каталог предметов живёт в resources/props.json — тот же файл читает
-// MapUpdateRequest для whitelist-валидации типов.
-// Размер тайла берём из каталога, а не из map.ts: иначе получится
-// циклический импорт (map.ts нужен каталог для расчёта проходимости).
-const TILE = catalogue.tileSize;
+// Каталог предметов приходит с сервера (таблица prop_types, стартовое
+// наполнение — resources/props.json). Клиент его не хранит и не импортирует:
+// размеры предмета меняются из браузера, и «зашитая» копия разъехалась бы с
+// тем, по чему валидирует карту сервер.
 
 export interface PropSpec {
     label: string;
@@ -16,20 +15,19 @@ export interface PropSpec {
     tall: number; // тайлов спрайта НАД основанием — за ними можно проходить
 }
 
-export const PROP_SPECS = catalogue.items as Record<string, PropSpec>;
-export const PROP_TYPES = Object.keys(PROP_SPECS);
+export type PropCatalogue = Record<string, PropSpec>;
 
 const ASSET_BASE = '/assets/lpc';
 
-export function propSpec(type: string): PropSpec | null {
-    return PROP_SPECS[type] ?? null;
+export function propSpec(catalogue: PropCatalogue, type: string): PropSpec | null {
+    return catalogue[type] ?? null;
 }
 
-export function propSheetUrl(spec: PropSpec): string {
+export function propSheetUrl(spec: Pick<PropSpec, 'sheet'>): string {
     return `${ASSET_BASE}/${spec.sheet}`;
 }
 
-/** Полный регион спрайта: основание + высокая часть. */
+/** Полный регион спрайта: основание + часть, висящая в воздухе. */
 export function propSpriteRect(spec: PropSpec): { x: number; y: number; width: number; height: number } {
     return {
         x: spec.sx,
@@ -58,11 +56,7 @@ export function propBaseRect(spec: PropSpec): { x: number; y: number; width: num
 }
 
 /** Клетки, которые предмет занимает и делает непроходимыми. */
-export function propFootprint(prop: { type: string; x: number; y: number }): { x: number; y: number }[] {
-    const spec = propSpec(prop.type);
-    if (!spec) {
-        return [];
-    }
+export function propFootprint(spec: PropSpec, prop: { x: number; y: number }): { x: number; y: number }[] {
     const cells: { x: number; y: number }[] = [];
     for (let dy = 0; dy < spec.h; dy++) {
         for (let dx = 0; dx < spec.w; dx++) {
@@ -70,4 +64,12 @@ export function propFootprint(prop: { type: string; x: number; y: number }): { x
         }
     }
     return cells;
+}
+
+/**
+ * Помещается ли предмет: основание внутри карты, а части «в воздухе» хватает
+ * места сверху. Ту же проверку повторяет сервер (MapUpdateRequest).
+ */
+export function propFits(spec: PropSpec, x: number, y: number, width: number, height: number): boolean {
+    return x >= 0 && y - spec.tall >= 0 && x + spec.w <= width && y + spec.h <= height;
 }

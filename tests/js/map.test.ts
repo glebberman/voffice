@@ -1,7 +1,12 @@
 import { CHAT_RADIUS, makeMap, OBJECT_RADIUS, tilesBetween, type MapData } from '@/game/map';
+import type { PropCatalogue } from '@/game/props';
 import { describe, expect, it } from 'vitest';
 import coworkingData from '../../resources/maps/coworking.json';
 import officeData from '../../resources/maps/office.json';
+import catalogueFile from '../../resources/props.json';
+
+// каталог, которым сидируется таблица prop_types — предметы блокируют проход
+const CATALOGUE = catalogueFile.items as PropCatalogue;
 
 const MAPS: Record<string, MapData> = {
     office: officeData as MapData,
@@ -11,7 +16,7 @@ const MAPS: Record<string, MapData> = {
 // целостность каждой карты из resources/maps — того же JSON,
 // которым сидер наполняет таблицу rooms
 describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
-    const map = makeMap(data);
+    const map = makeMap(data, CATALOGUE);
 
     it('все строки одинаковой ширины', () => {
         for (const row of map.rows) {
@@ -53,7 +58,7 @@ describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
             expect(map.isWalkable(portal.x, portal.y), `портал ${portal.label}`).toBe(true);
             const target = MAPS[portal.to];
             expect(target, `карта ${portal.to} существует`).toBeDefined();
-            expect(makeMap(target).isWalkable(portal.tx, portal.ty), `прибытие ${portal.label}`).toBe(true);
+            expect(makeMap(target, CATALOGUE).isWalkable(portal.tx, portal.ty), `прибытие ${portal.label}`).toBe(true);
         }
     });
 
@@ -83,7 +88,7 @@ describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
 });
 
 describe('офисная карта: геометрия и правила', () => {
-    const map = makeMap(MAPS.office);
+    const map = makeMap(MAPS.office, CATALOGUE);
 
     it('двери кухни и переговорки проходимы', () => {
         expect(map.isWalkable(13, 5)).toBe(true);

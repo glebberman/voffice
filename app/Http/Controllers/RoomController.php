@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\MapUpdateRequest;
 use App\Models\Message;
+use App\Models\PropType;
 use App\Models\Room;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -47,6 +48,8 @@ class RoomController extends Controller
                 ? ['x' => $user->last_x, 'y' => $user->last_y]
                 : null,
             'canEdit' => (bool) $user->is_admin,
+            // размеры предметов живут в каталоге, в карте — только тип и позиция
+            'propTypes' => PropType::catalogue(),
         ]);
     }
 
@@ -57,6 +60,7 @@ class RoomController extends Controller
         return Inertia::render('rooms/edit', [
             'room' => $room->only(['id', 'slug', 'name', 'map']),
             'rooms' => Room::query()->orderBy('id')->get(['slug', 'name']),
+            'propTypes' => PropType::catalogue(),
         ]);
     }
 

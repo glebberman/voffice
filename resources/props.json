@@ -82,6 +82,15 @@
             "w": 1,
             "h": 1,
             "tall": 0
+        },
+        "desk-vertical": {
+            "label": "Стол поперёк",
+            "sheet": "office/Card Table.png",
+            "sx": 96,
+            "sy": 0,
+            "w": 1,
+            "h": 2,
+            "tall": 0
         }
     }
 }

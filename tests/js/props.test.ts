@@ -1,10 +1,16 @@
 import { makeMap, type MapData } from '@/game/map';
-import { PROP_SPECS, PROP_TYPES, propBaseRect, propFootprint, propSpec, propTallRect } from '@/game/props';
+import { propBaseRect, propFits, propFootprint, propSpec, propTallRect, type PropCatalogue } from '@/game/props';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import catalogueFile from '../../resources/props.json';
 
 const LPC_DIR = fileURLToPath(new URL('../../public/assets/lpc', import.meta.url));
+
+// В рантайме каталог приходит из БД; resources/props.json — то, чем таблица
+// сидируется (PropTypeSeeder), поэтому проверяем именно его.
+const PROP_SPECS = catalogueFile.items as PropCatalogue;
+const PROP_TYPES = Object.keys(PROP_SPECS);
 
 // карта 8×8: пол внутри, стена по периметру
 const baseMap = (props: MapData['props']): MapData => ({
@@ -33,7 +39,7 @@ describe('каталог предметов', () => {
     });
 
     it('неизвестный тип не ломает propSpec', () => {
-        expect(propSpec('нет-такого')).toBeNull();
+        expect(propSpec(PROP_SPECS, 'нет-такого')).toBeNull();
     });
 });
 
@@ -54,7 +60,7 @@ describe('геометрия спрайта', () => {
     });
 
     it('footprint перечисляет все клетки основания', () => {
-        const cells = propFootprint({ id: 'p', type: 'cabinet', x: 3, y: 4 });
+        const cells = propFootprint(PROP_SPECS['cabinet'], { x: 3, y: 4 });
         expect(cells).toEqual([
             { x: 3, y: 4 },
             { x: 4, y: 4 },
@@ -64,7 +70,7 @@ describe('геометрия спрайта', () => {
 
 describe('проходимость', () => {
     it('основание предмета блокирует проход', () => {
-        const map = makeMap(baseMap([{ id: 'p', type: 'cabinet', x: 2, y: 4 }]));
+        const map = makeMap(baseMap([{ id: 'p', type: 'cabinet', x: 2, y: 4 }]), PROP_SPECS);
 
         expect(map.isWalkable(2, 4)).toBe(false);
         expect(map.isWalkable(3, 4)).toBe(false); // предмет шириной 2
@@ -72,35 +78,57 @@ describe('проходимость', () => {
     });
 
     it('за высокой частью можно пройти', () => {
-        const map = makeMap(baseMap([{ id: 'p', type: 'cabinet', x: 2, y: 4 }]));
+        const map = makeMap(baseMap([{ id: 'p', type: 'cabinet', x: 2, y: 4 }]), PROP_SPECS);
 
         expect(map.isWalkable(2, 3)).toBe(true); // высокая часть — не препятствие
         expect(map.isWalkable(2, 2)).toBe(true);
     });
 
     it('предмет неизвестного типа игнорируется, а не роняет карту', () => {
-        const map = makeMap(baseMap([{ id: 'p', type: 'нет-такого', x: 2, y: 4 }]));
+        const map = makeMap(baseMap([{ id: 'p', type: 'нет-такого', x: 2, y: 4 }]), PROP_SPECS);
+
+        expect(map.isWalkable(2, 4)).toBe(true);
+    });
+
+    it('без каталога предметы не блокируют проход (карта разобрана «вслепую»)', () => {
+        const map = makeMap(baseMap([{ id: 'p', type: 'cabinet', x: 2, y: 4 }]));
 
         expect(map.isWalkable(2, 4)).toBe(true);
     });
 
     it('карта без props работает как раньше', () => {
-        const map = makeMap(baseMap(undefined));
+        const map = makeMap(baseMap(undefined), PROP_SPECS);
 
         expect(map.props).toEqual([]);
         expect(map.isWalkable(2, 4)).toBe(true);
     });
 
     it('спавн уезжает на дефолтный, если сохранённая клетка занята предметом', () => {
-        const map = makeMap(baseMap([{ id: 'p', type: 'bin', x: 5, y: 5 }]));
+        const map = makeMap(baseMap([{ id: 'p', type: 'bin', x: 5, y: 5 }]), PROP_SPECS);
 
         expect(map.resolveSpawn({ x: 5, y: 5 })).toEqual({ x: 1, y: 1 });
     });
 });
 
+describe('помещается ли предмет', () => {
+    it('шкаф с воздухом +2 не встаёт вплотную к верхнему краю', () => {
+        const cabinet = PROP_SPECS['cabinet']; // 2×1, воздух +2
+
+        expect(propFits(cabinet, 2, 1, 8, 8)).toBe(false);
+        expect(propFits(cabinet, 2, 2, 8, 8)).toBe(true);
+    });
+
+    it('основание не должно вылезать вправо и вниз', () => {
+        const cabinet = PROP_SPECS['cabinet'];
+
+        expect(propFits(cabinet, 7, 4, 8, 8)).toBe(false); // ширина 2, край на 8
+        expect(propFits(cabinet, 6, 4, 8, 8)).toBe(true);
+    });
+});
+
 describe('верхушка стены', () => {
     it('клетка над стеной — верхушка, а сама стена — нет', () => {
-        const map = makeMap(baseMap([]));
+        const map = makeMap(baseMap([]), PROP_SPECS);
 
         expect(map.isWallCrown(3, 6)).toBe(true); // под ней нижняя стена карты
         expect(map.isWallCrown(3, 7)).toBe(false); // это уже сама стена
