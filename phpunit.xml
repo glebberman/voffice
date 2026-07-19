@@ -28,7 +28,9 @@
         <env name="REVERB_APP_KEY" value="test-key" force="true"/>
         <env name="REVERB_APP_SECRET" value="test-secret" force="true"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_DATABASE" value="testing"/>
+        <!-- база тестов живёт в памяти: RefreshDatabase всё равно накатывает
+             схему заново, а файл в корне репозитория только мешал -->
+        <env name="DB_DATABASE" value=":memory:"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
