@@ -275,5 +275,19 @@
             "x": 39,
             "y": 27
         }
+    ],
+    "doors": [
+        {
+            "id": "kitchen-door",
+            "x": 13,
+            "y": 5,
+            "lock": "north"
+        },
+        {
+            "id": "meeting-door",
+            "x": 20,
+            "y": 6,
+            "lock": "north"
+        }
     ]
 }

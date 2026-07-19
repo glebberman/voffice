@@ -1,5 +1,5 @@
 import type { AvatarConfig } from '@/game/avatar';
-import { makeMap, tilesBetween, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
+import { makeMap, tilesBetween, type DoorData, type DoorState, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
 import type { PropCatalogue } from '@/game/props';
 import { findStep } from '@/game/path';
 import { OfficeScene } from '@/game/scene';
@@ -78,6 +78,9 @@ export interface OfficeOptions {
     map: MapData;
     // каталог предметов приходит с сервера вместе с картой
     propTypes: PropCatalogue;
+    // открыта дверь или заперта — состояние игры, оно вне карты
+    doorStates: Record<string, DoorState>;
+    roomSlug: string;
     initialPosition: { x: number; y: number } | null;
     history: RoomMessage[];
     // вызывается, когда игрок наступает на портал
@@ -93,6 +96,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const [statuses, setStatuses] = useState<Record<number, PlayerStatus>>({});
     const [myStatus, setMyStatusState] = useState<ManualStatus>('available');
     const [nearbyObject, setNearbyObject] = useState<MapObjectData | null>(null);
+    // короткое «Заперто» под картой, когда дверь не поддалась
+    const [doorHint, setDoorHint] = useState<string | null>(null);
     const [activeObject, setActiveObject] = useState<MapObjectData | null>(null);
 
     // звонок по близости (WebRTC)
@@ -107,7 +112,14 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
     // компонент комнаты монтируется заново на каждую комнату (key={room.id}),
     // поэтому карта и id комнаты фиксируются на весь жизненный цикл хука
-    const [map] = useState(() => makeMap(options.map, options.propTypes));
+    const [map] = useState(() => {
+        const built = makeMap(options.map, options.propTypes);
+        for (const [id, state] of Object.entries(options.doorStates)) {
+            built.setDoorState(id, state);
+        }
+
+        return built;
+    });
     const roomId = options.roomId;
 
     const sceneRef = useRef<OfficeScene | null>(null);
@@ -150,6 +162,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const lastActivityRef = useRef(performance.now());
     const broadcastStatusRef = useRef<() => void>(() => {});
     const sendReactionRef = useRef<(emoji: string) => void>(() => {});
+    // обработчик клавиш вешается один раз, поэтому свежие функции — через рефы
+    const useDoorRef = useRef<(withLock: boolean) => void>(() => {});
+    const nearestDoorRef = useRef<(x: number, y: number) => DoorData | null>(() => null);
 
     const effectiveStatus = (): PlayerStatus => (awayRef.current ? 'away' : manualRef.current);
 
@@ -169,6 +184,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         setStatuses((prev) => (prev[state.id] === state.status ? prev : { ...prev, [state.id]: state.status }));
     }, []);
 
+    /** Дверь, до которой можно дотянуться: строго соседняя клетка. */
+    const nearestDoor = useCallback(
+        (x: number, y: number): DoorData | null =>
+            map.doors.find((d) => Math.abs(d.x - x) + Math.abs(d.y - y) === 1) ?? null,
+        [map],
+    );
+
     const updateNearbyObject = useCallback(
         (x: number, y: number) => {
             const obj = map.nearestObject(x, y);
@@ -179,6 +201,44 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             }
         },
         [map],
+    );
+
+    /**
+     * Дёргает дверь: X открывает/закрывает, Shift+X запирает/отпирает.
+     * Решение принимает сервер (он же знает про замок и сторону), клиент лишь
+     * называет действие и говорит, откуда тянется.
+     */
+    const useDoor = useCallback(
+        async (withLock: boolean) => {
+            const me = playersRef.current.get(userRef.current.id);
+            if (!me) {
+                return;
+            }
+            const door = nearestDoor(me.x, me.y);
+            if (!door) {
+                return;
+            }
+            const state = map.doorState(door.id);
+            const action = withLock ? (state.locked ? 'unlock' : 'lock') : state.closed ? 'open' : 'close';
+
+            try {
+                // своё состояние применяем сразу: эхо от Reverb придёт, но
+                // ждать его незачем — дверь должна отзываться мгновенно
+                const next = await postJson<DoorState & { id: string }>(`/rooms/${options.roomSlug}/doors`, {
+                    id: door.id,
+                    action,
+                    x: me.x,
+                    y: me.y,
+                });
+                sceneRef.current?.setDoorState(next.id, { closed: next.closed, locked: next.locked });
+                setDoorHint(null);
+            } catch {
+                // сервер отказал: заперто, замок с другой стороны или не дотянуться
+                setDoorHint(state.locked ? 'Заперто' : 'Не выходит');
+                window.setTimeout(() => setDoorHint(null), 1600);
+            }
+        },
+        [map, nearestDoor, options.roomSlug],
     );
 
     useEffect(() => {
@@ -265,6 +325,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             channel.whisper('status', { id: me.id, status } satisfies StatusPayload);
         };
         broadcastStatusRef.current = broadcastStatus;
+
+        useDoorRef.current = useDoor;
+        nearestDoorRef.current = nearestDoor;
 
         sendReactionRef.current = (emoji: string) => {
             if (!REACTIONS.includes(emoji)) {
@@ -595,6 +658,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 if (!map.isSpotlight(sx, sy) && !map.canHear(me.x, me.y, sx, sy)) {
                     return;
                 }
+                // ...но не сквозь закрытую дверь, даже если он в двух тайлах
+                if (!sceneRef.current?.isVisible(sx, sy)) {
+                    return;
+                }
                 sceneRef.current?.showBubble(p.id, p.text);
                 setMessages((prev) =>
                     [...prev, { key: `${p.id}-${Date.now()}-${Math.random()}`, userId: p.id, name: p.name, text: p.text, at: Date.now() }].slice(
@@ -605,6 +672,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             // серверное broadcast-событие чата комнаты (see MessageSent)
             .listen('.message.sent', (p: RoomMessage) => {
                 appendRoomMessage(p);
+            })
+            // дверь дёрнул кто-то из комнаты (see DoorChanged)
+            .listen('.door.changed', (p: { id: string; closed: boolean; locked: boolean }) => {
+                sceneRef.current?.setDoorState(p.id, { closed: p.closed, locked: p.locked });
             });
 
         // периодическое сохранение позиции (+ при закрытии страницы)
@@ -703,12 +774,21 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 return;
             }
 
-            // X — взаимодействие с ближайшим объектом
-            if (e.code === 'KeyX' && nearbyObjectRef.current) {
-                e.preventDefault();
-                activeObjectRef.current = nearbyObjectRef.current;
-                setActiveObject(nearbyObjectRef.current);
-                return;
+            // X — взаимодействие с ближайшим объектом, а если объекта нет, то
+            // с дверью рядом. Shift+X — замок.
+            if (e.code === 'KeyX') {
+                if (nearbyObjectRef.current && !e.shiftKey) {
+                    e.preventDefault();
+                    activeObjectRef.current = nearbyObjectRef.current;
+                    setActiveObject(nearbyObjectRef.current);
+                    return;
+                }
+                const me = playersRef.current.get(userRef.current.id);
+                if (me && nearestDoorRef.current(me.x, me.y)) {
+                    e.preventDefault();
+                    void useDoorRef.current(e.shiftKey);
+                    return;
+                }
             }
 
             // клавиши 1–5 — эмодзи-реакции
@@ -941,6 +1021,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         statuses,
         myStatus,
         nearbyObject,
+        doorHint,
         activeObject,
         closeObject,
         sendMessage,

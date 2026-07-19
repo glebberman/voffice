@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { type AvatarConfig } from '@/game/avatar';
-import { type MapData, type PortalData } from '@/game/map';
+import { type DoorState, type MapData, type PortalData } from '@/game/map';
 import { type PropCatalogue } from '@/game/props';
 import { type PlayerStatus, type RoomMessage } from '@/game/types';
 import { REACTIONS, useOffice, type ManualStatus } from '@/hooks/use-office';
@@ -43,6 +43,7 @@ interface RoomShowProps extends SharedData {
     lastPosition: { x: number; y: number } | null;
     canEdit: boolean;
     propTypes: PropCatalogue;
+    doorStates: Record<string, DoorState>;
 }
 
 // координаты прибытия из портала (?x=..&y=..) важнее сохранённой позиции
@@ -61,7 +62,7 @@ export default function RoomShow() {
 }
 
 function RoomView() {
-    const { auth, room, history, lastPosition, canEdit, propTypes } = usePage<RoomShowProps>().props;
+    const { auth, room, history, lastPosition, canEdit, propTypes, doorStates } = usePage<RoomShowProps>().props;
     const canvasHost = useRef<HTMLDivElement | null>(null);
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
@@ -79,6 +80,7 @@ function RoomView() {
         statuses,
         myStatus,
         nearbyObject,
+        doorHint,
         activeObject,
         closeObject,
         sendMessage,
@@ -104,8 +106,10 @@ function RoomView() {
         toggleScreen,
     } = useOffice({ id: auth.user.id, name: auth.user.name, avatar: avatarCfg }, canvasHost, {
         roomId: room.id,
+        roomSlug: room.slug,
         map: room.map,
         propTypes,
+        doorStates,
         initialPosition: arrivalPosition() ?? lastPosition,
         history,
         onPortal: (portal: PortalData) => {
@@ -149,7 +153,10 @@ function RoomView() {
                         )}
                         {selfStatus === 'away' && <Badge variant="secondary">Отошёл</Badge>}
                         <div className="ml-auto flex items-center gap-2">
-                            <span className="text-muted-foreground hidden text-xs xl:block">Стрелки/WASD · реакции 1–5 · X — объект</span>
+                            <span className="text-muted-foreground hidden text-xs xl:block">
+                                Стрелки/WASD · реакции 1–5 · X — объект и дверь · Shift+X — замок
+                            </span>
+                            {doorHint && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{doorHint}</span>}
                             {canEdit && (
                                 <Button variant="outline" size="sm" className="h-8" onClick={() => router.visit(`/rooms/${room.slug}/edit`)}>
                                     <Pencil className="size-4" />

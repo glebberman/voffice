@@ -8,6 +8,7 @@ use App\Models\Room;
 use App\Models\User;
 use Database\Seeders\PropTypeSeeder;
 use Database\Seeders\RoomSeeder;
+use Illuminate\Foundation\Console\ServeCommand;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -147,6 +148,17 @@ class DoorTest extends TestCase
         $this->assertSame(['closed' => true, 'locked' => false], $states['plain']);
         // нетронутая дверь строки не заводит — она просто открыта
         $this->assertArrayNotHasKey('locked-north', $states);
+    }
+
+    public function test_reverb_address_reaches_serve_workers(): void
+    {
+        // `artisan serve` пропускает в рабочие процессы только переменные из
+        // белого списка, остальные они перечитывают из .env. Без этого веб-
+        // запрос публиковал события на localhost вместо контейнера reverb и
+        // падал с 500 — а CLI в том же контейнере работал, и баг долго прятался.
+        foreach (['REVERB_HOST', 'REVERB_PORT', 'REVERB_SCHEME'] as $variable) {
+            $this->assertContains($variable, ServeCommand::$passthroughVariables, $variable);
+        }
     }
 
     public function test_map_rejects_door_on_a_wall(): void

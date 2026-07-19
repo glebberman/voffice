@@ -2,7 +2,7 @@ import { Application, Assets, Container, Graphics, GraphicsContext, Rectangle, S
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { cutoutPolygon, GHOST_ALPHA, SPRITE_TOP } from './cutout';
-import { CHAT_RADIUS, TILE, type GameMap, type MapObjectType } from './map';
+import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type MapObjectType } from './map';
 import { propBaseRect, propSheetUrl, propSpec, propTallRect } from './props';
 import type { Direction, PlayerState, PlayerStatus } from './types';
 
@@ -55,7 +55,15 @@ const COLORS = {
     zoneLabel: 0x6b6478,
     spotlightFloor: 0xf4e9c8,
     spotlight: 0xffe08a,
+    doorFrame: 0x6b6478,
+    door: 0xa9714b,
+    doorLocked: 0x8f5a5a,
+    doorKnob: 0xf0e6d2,
+    doorLockedKnob: 0xffd166,
 };
+
+// насколько глушим то, куда персонажу не дойти
+const SHADOW_ALPHA = 0.82;
 
 const AVATAR_COLORS = [0xe4572e, 0x17bebb, 0xffc914, 0x2e933c, 0x7768ae, 0xd1495b, 0x3b8ea5, 0xf26430];
 
@@ -125,6 +133,12 @@ export class OfficeScene {
     private maskLayer = new Container();
     private overheadPieces = new Set<OverheadPiece>();
     private proximityRing = new Graphics();
+    private doorLayer = new Container(); // двери — над полом, под игроками
+    private doorNodes = new Map<string, Graphics>();
+    // Тень над всем, куда персонажу не дойти: там не видно, что происходит.
+    private shadowLayer = new Graphics();
+    private reachable = new Set<number>();
+    private reachableFrom: number | null = null; // из какой клетки посчитано
     private selfId: number | null = null;
     private destroyed = false;
     private sceneTime = 0;
@@ -186,6 +200,7 @@ export class OfficeScene {
         this.drawZoneLabels();
         this.drawPortals();
         this.world.addChild(this.proximityRing);
+        this.world.addChild(this.doorLayer);
         this.world.addChild(this.propBaseLayer);
         this.world.addChild(this.playerLayer);
         this.world.addChild(this.overheadLayer);
@@ -195,6 +210,11 @@ export class OfficeScene {
 
         this.overheadGhost.alpha = GHOST_ALPHA;
         this.world.addChild(this.maskLayer);
+        // тень поверх всего мира: за закрытой дверью не должно быть видно
+        // ни пола, ни мебели, ни чужих персонажей
+        this.world.addChild(this.shadowLayer);
+
+        this.drawDoors();
 
         this.drawProps();
 
@@ -256,6 +276,112 @@ export class OfficeScene {
                     // спрайтшита нет — предмет просто не отрисуется
                 });
         }
+    }
+
+    /**
+     * Двери рисуем сами: открытая — тонкий косяк по краям проёма, закрытая —
+     * полотно во всю клетку. Замок виден точкой с той стороны, где он висит.
+     */
+    private drawDoors(): void {
+        for (const door of this.map.doors) {
+            const g = new Graphics();
+            g.position.set(door.x * TILE, door.y * TILE);
+            this.doorLayer.addChild(g);
+            this.doorNodes.set(door.id, g);
+        }
+        this.redrawDoors();
+    }
+
+    private redrawDoors(): void {
+        for (const door of this.map.doors) {
+            const g = this.doorNodes.get(door.id);
+            if (!g) {
+                continue;
+            }
+            const { closed, locked } = this.map.doorState(door.id);
+            g.clear();
+
+            // косяк: две стойки по бокам проёма, они видны всегда
+            g.rect(0, 0, 3, TILE).fill(COLORS.doorFrame);
+            g.rect(TILE - 3, 0, 3, TILE).fill(COLORS.doorFrame);
+
+            if (closed) {
+                g.rect(3, 0, TILE - 6, TILE).fill(locked ? COLORS.doorLocked : COLORS.door);
+                g.rect(3, 0, TILE - 6, 5).fill({ color: 0xffffff, alpha: 0.12 });
+                // ручка со стороны замка, чтобы было видно, откуда запирать
+                const knob = door.lock === 'north' ? 7 : door.lock === 'south' ? TILE - 7 : TILE / 2;
+                g.circle(TILE - 8, knob, 2.5).fill(locked ? COLORS.doorLockedKnob : COLORS.doorKnob);
+            }
+        }
+    }
+
+    /**
+     * Пересчитывает, куда персонаж может дойти, и перерисовывает всё, что от
+     * этого зависит: тень, верхушки стен и видимость чужих персонажей.
+     *
+     * Достижимость меняется редко — только когда трогают дверь или когда сам
+     * персонаж оказался в другой части карты, — поэтому считаем не каждый кадр.
+     */
+    private refreshReachable(tileX: number, tileY: number, force = false): void {
+        const from = tileY * this.map.width + tileX;
+        if (!force && this.reachableFrom !== null && this.reachable.has(from)) {
+            return; // всё ещё в той же связной области
+        }
+        this.reachableFrom = from;
+        this.reachable = this.map.reachableFrom(tileX, tileY);
+        this.drawShadow();
+        this.rebuildChunks(); // верхушки стен зависят от достижимости
+    }
+
+    /** Затемняет всё, куда не дойти, в пределах видимых чанков. */
+    private drawShadow(): void {
+        this.shadowLayer.clear();
+        const range = this.chunkRange;
+        // Пока своего персонажа нет, достижимость не посчитана — затемнять
+        // нечего, иначе на первых кадрах карта уходила бы в тень целиком.
+        if (!range || this.reachable.size === 0) {
+            return;
+        }
+        const x0 = range.x0 * CHUNK_TILES;
+        const y0 = range.y0 * CHUNK_TILES;
+        const x1 = Math.min((range.x1 + 1) * CHUNK_TILES, this.map.width);
+        const y1 = Math.min((range.y1 + 1) * CHUNK_TILES, this.map.height);
+
+        for (let y = y0; y < y1; y++) {
+            for (let x = x0; x < x1; x++) {
+                if (!this.reachable.has(y * this.map.width + x)) {
+                    this.shadowLayer.rect(x * TILE, y * TILE, TILE, TILE);
+                }
+            }
+        }
+        this.shadowLayer.fill({ color: 0x14121a, alpha: SHADOW_ALPHA });
+    }
+
+    /** Перестраивает видимые чанки — например когда изменилась достижимость. */
+    private rebuildChunks(): void {
+        for (const [id, parts] of this.chunks) {
+            parts.base.destroy();
+            this.dropOverheadPiece(parts.piece);
+            this.chunks.delete(id);
+        }
+        this.chunkRange = null;
+        this.updateChunks();
+    }
+
+    /** Меняет состояние двери, пришедшее с сервера. */
+    setDoorState(id: string, state: DoorState): void {
+        this.map.setDoorState(id, state);
+        this.redrawDoors();
+        // проход мог открыться или закрыться — пересчитываем принудительно
+        const self = this.selfId !== null ? this.players.get(this.selfId) : null;
+        if (self) {
+            this.refreshReachable(Math.floor(self.root.x / TILE), Math.floor(self.root.y / TILE), true);
+        }
+    }
+
+    /** Видна ли клетка своему персонажу — по ней прячем чужих. */
+    isVisible(x: number, y: number): boolean {
+        return this.reachable.size === 0 || this.reachable.has(y * this.map.width + x);
     }
 
     /** Регистрирует кусок overhead: спрайт, его двойник и накрытые клетки. */
@@ -649,9 +775,14 @@ export class OfficeScene {
                 // дырявил бы и предмет, мимо которого просто проходят сбоку.
                 const tileX = Math.floor(sprite.root.x / TILE);
                 const tileY = Math.floor(sprite.root.y / TILE);
+                this.refreshReachable(tileX, tileY);
                 const tile = this.map.isOverhead(tileX, tileY) ? tileY * this.map.width + tileX : null;
                 // овал держится на середине роста персонажа, а не на ногах
                 this.updateCutout(sprite.root.x, sprite.root.y - 14, sprite.root.y - SPRITE_TOP, tile);
+            } else {
+                // чужого персонажа не видно за закрытой дверью — вместе с
+                // именем, пузырём и реакциями: они дети того же контейнера
+                sprite.root.visible = this.isVisible(Math.floor(sprite.root.x / TILE), Math.floor(sprite.root.y / TILE));
             }
         }
 
@@ -725,6 +856,7 @@ export class OfficeScene {
             return;
         }
         this.chunkRange = range;
+        let added = false;
 
         for (const [id, parts] of this.chunks) {
             const [cx, cy] = id.split(':').map(Number);
@@ -740,12 +872,17 @@ export class OfficeScene {
                 const id = `${cx}:${cy}`;
                 if (!this.chunks.has(id)) {
                     const { base, crown, ghost, crownTiles } = this.drawChunk(cx, cy);
+                    added = true;
                     this.mapLayer.addChild(base);
                     this.overheadLayer.addChild(crown);
                     this.overheadGhost.addChild(ghost);
                     this.chunks.set(id, { base, piece: this.addOverheadPiece(crown, ghost, crownTiles) });
                 }
             }
+        }
+
+        if (added) {
+            this.drawShadow(); // тень рисуется по видимым чанкам, а их стало больше
         }
     }
 
@@ -784,7 +921,10 @@ export class OfficeScene {
 
                 // верхушка стены: рисуем её НАД клеткой со стеной, если сверху
                 // не стена. Клетка остаётся проходимой — за стеной можно пройти
-                if (this.map.isWallCrown(x, y - 1) && y > 0) {
+                // Верхушку не рисуем, если её клетка в доступном помещении:
+                // такая стена стоит ближе к камере и загораживает комнату, в
+                // которой персонаж и находится.
+                if (this.map.isWallCrown(x, y - 1) && y > 0 && !this.reachable.has((y - 1) * this.map.width + x)) {
                     crownTiles.add((y - 1) * this.map.width + x);
                     const cy2 = (y - 1) * TILE;
                     crownContext.rect(px, cy2, TILE, TILE).fill(COLORS.wall);
