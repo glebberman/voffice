@@ -60,6 +60,12 @@ class MapUpdateRequest extends FormRequest
             'map.props.*.type' => ['required', 'string', Rule::in(array_keys($this->propCatalogue()))],
             'map.props.*.x' => ['required', 'integer', 'min:0'],
             'map.props.*.y' => ['required', 'integer', 'min:0'],
+            // двери: стоят на проходимом тайле, замок — на одной из сторон
+            'map.doors' => ['sometimes', 'array', 'max:500'],
+            'map.doors.*.id' => ['required', 'string', 'max:64'],
+            'map.doors.*.x' => ['required', 'integer', 'min:0'],
+            'map.doors.*.y' => ['required', 'integer', 'min:0'],
+            'map.doors.*.lock' => ['present', 'nullable', 'string', 'in:north,south,west,east'],
             'map.portals' => ['present', 'array'],
             'map.portals.*.x' => ['required', 'integer', 'min:0'],
             'map.portals.*.y' => ['required', 'integer', 'min:0'],
@@ -107,6 +113,24 @@ class MapUpdateRequest extends FormRequest
                     if (! $inBounds($portal['x'] ?? -1, $portal['y'] ?? -1)) {
                         $validator->errors()->add("map.portals.{$i}", 'Портал за пределами карты');
                     }
+                }
+
+                // дверь должна стоять на проходимой клетке — иначе через неё
+                // никогда не пройти, и она просто ломает связность карты
+                $seenDoors = [];
+                foreach ($map['doors'] ?? [] as $i => $doorItem) {
+                    $x = $doorItem['x'] ?? -1;
+                    $y = $doorItem['y'] ?? -1;
+                    if (! $inBounds($x, $y) || ! in_array($rows[$y][$x] ?? '#', self::WALKABLE, true)) {
+                        $validator->errors()->add("map.doors.{$i}", 'Дверь должна стоять на проходимой клетке');
+
+                        continue;
+                    }
+                    $key = $x.':'.$y;
+                    if (isset($seenDoors[$key])) {
+                        $validator->errors()->add("map.doors.{$i}", 'На этой клетке уже есть дверь');
+                    }
+                    $seenDoors[$key] = true;
                 }
 
                 // предмет должен целиком помещаться: и основание, и высокая часть

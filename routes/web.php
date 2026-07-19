@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\DoorController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\PropTypeController;
@@ -35,6 +36,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('props', [PropTypeController::class, 'store'])->name('props.store');
     Route::put('props/{prop_type}', [PropTypeController::class, 'update'])->name('props.update');
     Route::delete('props/{prop_type}', [PropTypeController::class, 'destroy'])->name('props.destroy');
+
+    Route::post('rooms/{room:slug}/doors', [DoorController::class, 'update'])->name('doors.update');
 
     Route::post('messages', [MessageController::class, 'store'])->name('messages.store');
     Route::post('position', [PositionController::class, 'update'])->name('position.update');

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\MapUpdateRequest;
+use App\Models\DoorState;
 use App\Models\Message;
 use App\Models\PropType;
 use App\Models\Room;
@@ -50,6 +51,8 @@ class RoomController extends Controller
             'canEdit' => (bool) $user->is_admin,
             // размеры предметов живут в каталоге, в карте — только тип и позиция
             'propTypes' => PropType::catalogue(),
+            // открыта дверь или заперта — состояние игры, оно вне карты
+            'doorStates' => DoorState::forRoom($room),
         ]);
     }
 

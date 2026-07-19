@@ -59,6 +59,44 @@ export interface PropData {
     y: number;
 }
 
+/** Сторона двери: с неё запирают и отпирают. */
+export type LockSide = 'north' | 'south' | 'west' | 'east';
+
+export const LOCK_SIDES: LockSide[] = ['north', 'south', 'west', 'east'];
+
+export const LOCK_SIDE_LABEL: Record<LockSide, string> = {
+    north: 'сверху',
+    south: 'снизу',
+    west: 'слева',
+    east: 'справа',
+};
+
+const LOCK_SIDE_STEP: Record<LockSide, { dx: number; dy: number }> = {
+    north: { dx: 0, dy: -1 },
+    south: { dx: 0, dy: 1 },
+    west: { dx: -1, dy: 0 },
+    east: { dx: 1, dy: 0 },
+};
+
+/**
+ * Дверь стоит на проходимом тайле (обычно в проёме стены). Закрытая не
+ * пропускает, запертую нельзя открыть, пока её не отопрут со стороны замка.
+ * В карте живёт только описание двери — открыта она сейчас или нет, хранится
+ * отдельно (таблица door_states), потому что это состояние игры, а не карты.
+ */
+export interface DoorData {
+    id: string;
+    x: number;
+    y: number;
+    lock: LockSide | null; // null — замка нет, запереть нельзя
+}
+
+/** Состояние двери в рантайме: приезжает с сервера и меняется в эфире. */
+export interface DoorState {
+    closed: boolean;
+    locked: boolean;
+}
+
 export interface MapData {
     rows: string[];
     spawn: { x: number; y: number };
@@ -66,6 +104,7 @@ export interface MapData {
     objects: MapObjectData[];
     portals: PortalData[];
     props?: PropData[];
+    doors?: DoorData[];
 }
 
 const WALKABLE = new Set(['.', ':', ',', ';', '*']);
@@ -143,6 +182,7 @@ export interface GameMap {
     objects: MapObjectData[];
     portals: PortalData[];
     props: PropData[];
+    doors: DoorData[];
     /** Каталог, которым разобраны props — сцене и редактору нужен тот же. */
     catalogue: PropCatalogue;
     tileAt(x: number, y: number): string;
@@ -151,6 +191,17 @@ export interface GameMap {
     isWallCrown(x: number, y: number): boolean;
     /** Накрыта ли клетка тем, что рисуется поверх игроков. */
     isOverhead(x: number, y: number): boolean;
+    doorAt(x: number, y: number): DoorData | null;
+    doorState(id: string): DoorState;
+    /** Меняет состояние двери — карта перестаёт пускать через закрытую. */
+    setDoorState(id: string, state: DoorState): void;
+    /** Стоит ли игрок с той стороны двери, где висит замок. */
+    onLockSide(door: DoorData, x: number, y: number): boolean;
+    /**
+     * Клетки, видимые из точки: всё, куда можно дойти, плюс сами закрытые
+     * двери (их видно со своей стороны, а что за ними — уже нет).
+     */
+    reachableFrom(x: number, y: number): Set<number>;
     isSpotlight(x: number, y: number): boolean;
     zoneAt(x: number, y: number): Zone | null;
     canHear(lx: number, ly: number, sx: number, sy: number): boolean;
@@ -195,7 +246,83 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
         }
     }
 
-    const isWalkable = (x: number, y: number): boolean => WALKABLE.has(tileAt(x, y)) && !blocked.has(y * width + x);
+    // Двери: описание берём из карты, а состояние (открыта/заперта) живёт
+    // отдельно и меняется в рантайме — поэтому здесь оно мутабельное.
+    const doors = data.doors ?? [];
+    const doorByTile = new Map<number, DoorData>();
+    const doorStates = new Map<string, DoorState>();
+    for (const door of doors) {
+        doorByTile.set(door.y * width + door.x, door);
+        doorStates.set(door.id, { closed: false, locked: false });
+    }
+
+    const doorAt = (x: number, y: number): DoorData | null => doorByTile.get(y * width + x) ?? null;
+    const doorState = (id: string): DoorState => doorStates.get(id) ?? { closed: false, locked: false };
+    const setDoorState = (id: string, state: DoorState): void => {
+        if (doorStates.has(id)) {
+            doorStates.set(id, state);
+        }
+    };
+
+    const onLockSide = (door: DoorData, x: number, y: number): boolean => {
+        if (!door.lock) {
+            return false;
+        }
+        const step = LOCK_SIDE_STEP[door.lock];
+
+        return x === door.x + step.dx && y === door.y + step.dy;
+    };
+
+    const isWalkable = (x: number, y: number): boolean => {
+        if (!WALKABLE.has(tileAt(x, y)) || blocked.has(y * width + x)) {
+            return false;
+        }
+        const door = doorAt(x, y);
+
+        return !door || !doorState(door.id).closed;
+    };
+
+    /**
+     * Обход в ширину по проходимым клеткам. Закрытая дверь в набор попадает
+     * (её видно со своей стороны), но дальше через неё не идём.
+     */
+    const reachableFrom = (x: number, y: number): Set<number> => {
+        const seen = new Set<number>();
+        if (x < 0 || y < 0 || x >= width || y >= height) {
+            return seen;
+        }
+
+        const queue = [y * width + x];
+        seen.add(queue[0]);
+        for (let head = 0; head < queue.length; head++) {
+            const cell = queue[head];
+            const cx = cell % width;
+            const cy = (cell - cx) / width;
+            if (!isWalkable(cx, cy) && cell !== queue[0]) {
+                continue; // закрытая дверь: видно её саму, но не то, что за ней
+            }
+            for (const [dx, dy] of [
+                [0, -1],
+                [0, 1],
+                [-1, 0],
+                [1, 0],
+            ]) {
+                const nx = cx + dx;
+                const ny = cy + dy;
+                if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+                    continue;
+                }
+                const next = ny * width + nx;
+                if (seen.has(next) || (!isWalkable(nx, ny) && !doorAt(nx, ny))) {
+                    continue;
+                }
+                seen.add(next);
+                queue.push(next);
+            }
+        }
+
+        return seen;
+    };
 
     // стена рисуется в два тайла: над ней «верхушка», за которой можно ходить
     const isWallCrown = (x: number, y: number): boolean => tileAt(x, y) !== '#' && tileAt(x, y + 1) === '#';
@@ -249,11 +376,17 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
         objects: data.objects,
         portals: data.portals,
         props,
+        doors,
         catalogue,
         tileAt,
         isWalkable,
         isWallCrown,
         isOverhead,
+        doorAt,
+        doorState,
+        setDoorState,
+        onLockSide,
+        reachableFrom,
         isSpotlight,
         zoneAt,
         canHear,
