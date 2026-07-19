@@ -86,6 +86,20 @@ interface PlayerSprite {
     floaters: { node: Text; age: number }[];
 }
 
+/**
+ * Кусок «верхнего» слоя: то, что рисуется поверх игроков (часть предмета в
+ * воздухе или верхушки стен одного чанка), его полупрозрачный двойник и
+ * клетки, которые он собой закрывает. Маски создаются, только пока по этому
+ * куску идёт вырез.
+ */
+interface OverheadPiece {
+    node: Container;
+    ghost: Container;
+    tiles: Set<number>; // индексы клеток: y * width + x
+    cut: Graphics | null;
+    ghostCut: Graphics | null;
+}
+
 const MOVE_SPEED = TILE * 7; // px в секунду
 
 // пока хост не измерен (первый кадр), рендерим в этот размер
@@ -103,11 +117,13 @@ export class OfficeScene {
     // Всё, за что можно зайти: верхушки стен и высокие части предметов.
     // Рисуется ПОВЕРХ игроков, поэтому персонаж за ними скрывается.
     private overheadLayer = new Container();
-    // Полупрозрачная копия overhead, видимая только внутри овала вокруг своего
-    // персонажа: overheadLayer маскируется инверсно, ghost — прямо.
+    // Полупрозрачные копии overhead, видимые только внутри овала вокруг своего
+    // персонажа: сам предмет маскируется инверсно, копия — прямо.
     private overheadGhost = new Container();
-    private cutoutMask = new Graphics();
-    private ghostMask = new Graphics();
+    // Маски живут в мире (им нужны те же координаты, что и предметам), но сами
+    // не рисуются — Pixi использует их как трафарет.
+    private maskLayer = new Container();
+    private overheadPieces = new Set<OverheadPiece>();
     private proximityRing = new Graphics();
     private selfId: number | null = null;
     private destroyed = false;
@@ -119,7 +135,7 @@ export class OfficeScene {
     private pings: { node: Text; age: number }[] = [];
     private viewport = { ...DEFAULT_VIEWPORT };
     private camera: Point = { x: 0, y: 0 };
-    private chunks = new Map<string, { base: Graphics; crown: Graphics; ghost: Graphics }>();
+    private chunks = new Map<string, { base: Graphics; piece: OverheadPiece }>();
     private chunkGrid: Size;
     private chunkRange: ChunkRange | null = null;
 
@@ -177,12 +193,8 @@ export class OfficeScene {
         this.drawObjects();
         this.app.stage.addChild(this.world);
 
-        // овал-вырез: overhead виден везде, КРОМЕ овала, а ghost — только внутри
         this.overheadGhost.alpha = GHOST_ALPHA;
-        this.world.addChild(this.cutoutMask, this.ghostMask);
-        this.overheadLayer.setMask({ mask: this.cutoutMask, inverse: true });
-        this.overheadGhost.mask = this.ghostMask;
-        this.hideCutout();
+        this.world.addChild(this.maskLayer);
 
         this.drawProps();
 
@@ -224,11 +236,21 @@ export class OfficeScene {
                         return;
                     }
                     const tallTexture = new Texture({ source: texture.source, frame: new Rectangle(tall.x, tall.y, tall.width, tall.height) });
-                    for (const layer of [this.overheadLayer, this.overheadGhost]) {
+                    const [node, ghost] = [this.overheadLayer, this.overheadGhost].map((layer) => {
                         const sprite = new Sprite(tallTexture);
                         sprite.position.set(prop.x * TILE, (prop.y - spec.tall) * TILE);
                         layer.addChild(sprite);
+                        return sprite;
+                    });
+
+                    // клетки, которые эта часть закрывает собой
+                    const tiles = new Set<number>();
+                    for (let dy = 1; dy <= spec.tall; dy++) {
+                        for (let dx = 0; dx < spec.w; dx++) {
+                            tiles.add((prop.y - dy) * this.map.width + prop.x + dx);
+                        }
                     }
+                    this.addOverheadPiece(node, ghost, tiles);
                 })
                 .catch(() => {
                     // спрайтшита нет — предмет просто не отрисуется
@@ -236,28 +258,71 @@ export class OfficeScene {
         }
     }
 
-    /**
-     * Перерисовывает овал-вырез вокруг точки (мировые координаты).
-     * `topY` — линия макушки: выше неё вырез не идёт, иначе просвечивало бы
-     * то, что стоит на карте выше персонажа, то есть за его спиной.
-     */
-    private drawCutout(x: number, y: number, topY: number): void {
-        const shape = cutoutPolygon(x, y, topY);
-        for (const mask of [this.cutoutMask, this.ghostMask]) {
-            mask.clear().poly(shape).fill(0xffffff);
+    /** Регистрирует кусок overhead: спрайт, его двойник и накрытые клетки. */
+    private addOverheadPiece(node: Container, ghost: Container, tiles: Set<number>): OverheadPiece {
+        ghost.visible = false; // двойник нужен только внутри выреза
+        const piece: OverheadPiece = { node, ghost, tiles, cut: null, ghostCut: null };
+        this.overheadPieces.add(piece);
+
+        return piece;
+    }
+
+    private dropOverheadPiece(piece: OverheadPiece): void {
+        this.stopCutting(piece);
+        this.overheadPieces.delete(piece);
+        piece.node.destroy();
+        piece.ghost.destroy();
+    }
+
+    /** Вешает на предмет собственную пару масок — вырез и окно для двойника. */
+    private startCutting(piece: OverheadPiece): void {
+        if (piece.cut) {
+            return;
         }
+        piece.cut = new Graphics();
+        piece.ghostCut = new Graphics();
+        this.maskLayer.addChild(piece.cut, piece.ghostCut);
+        piece.node.setMask({ mask: piece.cut, inverse: true });
+        piece.ghost.mask = piece.ghostCut;
+        piece.ghost.visible = true;
+    }
+
+    private stopCutting(piece: OverheadPiece): void {
+        if (!piece.cut) {
+            return;
+        }
+        piece.node.mask = null;
+        piece.ghost.mask = null;
+        piece.ghost.visible = false;
+        piece.cut.destroy();
+        piece.ghostCut?.destroy();
+        piece.cut = null;
+        piece.ghostCut = null;
     }
 
     /**
-     * Убирает вырез: overhead виден целиком, ghost — нет.
+     * Обновляет вырезы под персонажа, стоящего на клетке `tile`.
      *
-     * Маски именно очищаются, а не уводятся за край карты: пустая инверсная
-     * маска ничего не вычитает, а пустая прямая ничего не показывает — ровно
-     * то, что нужно.
+     * Маска у каждого предмета своя, поэтому дырка появляется ровно в том, что
+     * закрывает персонажа. С одной маской на весь слой овал заодно дырявил всё,
+     * что просто оказалось рядом, — стену за спиной или соседний предмет.
+     *
+     * `topY` — линия макушки: выше неё вырез не идёт, иначе просвечивало бы то,
+     * что стоит на карте выше персонажа.
      */
-    private hideCutout(): void {
-        this.cutoutMask.clear();
-        this.ghostMask.clear();
+    private updateCutout(x: number, y: number, topY: number, tile: number | null): void {
+        let shape: number[] | null = null;
+
+        for (const piece of this.overheadPieces) {
+            if (tile === null || !piece.tiles.has(tile)) {
+                this.stopCutting(piece);
+                continue;
+            }
+            this.startCutting(piece);
+            shape ??= cutoutPolygon(x, y, topY);
+            piece.cut?.clear().poly(shape).fill(0xffffff);
+            piece.ghostCut?.clear().poly(shape).fill(0xffffff);
+        }
     }
 
     /** Состояние камеры — для отладки и e2e-проверок. */
@@ -579,18 +644,14 @@ export class OfficeScene {
 
             if (id === this.selfId) {
                 this.proximityRing.position.set(sprite.root.x, sprite.root.y);
-                // Вырез нужен, только когда персонаж реально под чем-то стоит.
-                // Иначе овал дырявил бы предмет, мимо которого просто проходят
-                // сбоку. Клетку берём по центру спрайта — она же и определяет,
-                // накрыт ли он: root.x/y и есть центр тайла.
+                // Клетку берём по центру спрайта: root.x/y и есть центр тайла.
+                // Вырезаем только в том, что эту клетку накрывает, — иначе овал
+                // дырявил бы и предмет, мимо которого просто проходят сбоку.
                 const tileX = Math.floor(sprite.root.x / TILE);
                 const tileY = Math.floor(sprite.root.y / TILE);
-                if (this.map.isOverhead(tileX, tileY)) {
-                    // овал держится на середине роста персонажа, а не на ногах
-                    this.drawCutout(sprite.root.x, sprite.root.y - 14, sprite.root.y - SPRITE_TOP);
-                } else {
-                    this.hideCutout();
-                }
+                const tile = this.map.isOverhead(tileX, tileY) ? tileY * this.map.width + tileX : null;
+                // овал держится на середине роста персонажа, а не на ногах
+                this.updateCutout(sprite.root.x, sprite.root.y - 14, sprite.root.y - SPRITE_TOP, tile);
             }
         }
 
@@ -669,8 +730,7 @@ export class OfficeScene {
             const [cx, cy] = id.split(':').map(Number);
             if (!chunkRangeContains(range, cx, cy)) {
                 parts.base.destroy();
-                parts.crown.destroy();
-                parts.ghost.destroy();
+                this.dropOverheadPiece(parts.piece);
                 this.chunks.delete(id);
             }
         }
@@ -679,11 +739,11 @@ export class OfficeScene {
             for (let cx = range.x0; cx <= range.x1; cx++) {
                 const id = `${cx}:${cy}`;
                 if (!this.chunks.has(id)) {
-                    const parts = this.drawChunk(cx, cy);
-                    this.chunks.set(id, parts);
-                    this.mapLayer.addChild(parts.base);
-                    this.overheadLayer.addChild(parts.crown);
-                    this.overheadGhost.addChild(parts.ghost);
+                    const { base, crown, ghost, crownTiles } = this.drawChunk(cx, cy);
+                    this.mapLayer.addChild(base);
+                    this.overheadLayer.addChild(crown);
+                    this.overheadGhost.addChild(ghost);
+                    this.chunks.set(id, { base, piece: this.addOverheadPiece(crown, ghost, crownTiles) });
                 }
             }
         }
@@ -694,9 +754,10 @@ export class OfficeScene {
      * Возвращает две части: низ (под игроками) и верхушки стен (над ними).
      * Верхушка и её полупрозрачная копия делят один GraphicsContext.
      */
-    private drawChunk(cx: number, cy: number): { base: Graphics; crown: Graphics; ghost: Graphics } {
+    private drawChunk(cx: number, cy: number): { base: Graphics; crown: Graphics; ghost: Graphics; crownTiles: Set<number> } {
         const g = new Graphics();
         const crownContext = new GraphicsContext();
+        const crownTiles = new Set<number>();
         const startX = cx * CHUNK_TILES;
         const startY = cy * CHUNK_TILES;
         const endX = Math.min(startX + CHUNK_TILES, this.map.width);
@@ -724,6 +785,7 @@ export class OfficeScene {
                 // верхушка стены: рисуем её НАД клеткой со стеной, если сверху
                 // не стена. Клетка остаётся проходимой — за стеной можно пройти
                 if (this.map.isWallCrown(x, y - 1) && y > 0) {
+                    crownTiles.add((y - 1) * this.map.width + x);
                     const cy2 = (y - 1) * TILE;
                     crownContext.rect(px, cy2, TILE, TILE).fill(COLORS.wall);
                     crownContext.rect(px, cy2, TILE, 7).fill(COLORS.wallTop);
@@ -767,7 +829,7 @@ export class OfficeScene {
             }
         }
 
-        return { base: g, crown: new Graphics(crownContext), ghost: new Graphics(crownContext) };
+        return { base: g, crown: new Graphics(crownContext), ghost: new Graphics(crownContext), crownTiles };
     }
 
     setObjectHighlight(id: string | null): void {
