@@ -77,10 +77,13 @@ class MapUpdateRequest extends FormRequest
     }
 
     // геометрическая целостность карты — то же, что проверяют js-тесты
+    /**
+     * @return list<callable>
+     */
     public function after(): array
     {
         return [
-            function (Validator $validator) {
+            function (Validator $validator): void {
                 $map = $this->input('map');
                 if (! is_array($map) || ! is_array($map['rows'] ?? null)) {
                     return;

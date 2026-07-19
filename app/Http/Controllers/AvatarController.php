@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\JsonFile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -11,7 +12,7 @@ class AvatarController extends Controller
     public function update(Request $request): JsonResponse
     {
         // гардероб — единый источник правды для клиента и валидации
-        $wardrobe = json_decode(file_get_contents(resource_path('wardrobe.json')), true);
+        $wardrobe = JsonFile::read(resource_path('wardrobe.json'));
 
         $body = $request->input('body');
         $bodyConfig = $wardrobe['bodies'][$body] ?? null;

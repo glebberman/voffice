@@ -17,7 +17,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('door_states', function (Blueprint $table) {
+        Schema::create('door_states', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('room_id')->constrained()->cascadeOnDelete();
             $table->string('door_key', 64); // id двери из карты

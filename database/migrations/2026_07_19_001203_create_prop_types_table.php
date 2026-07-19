@@ -16,7 +16,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('prop_types', function (Blueprint $table) {
+        Schema::create('prop_types', function (Blueprint $table): void {
             $table->id();
             $table->string('slug', 64)->unique(); // ключ, которым предмет назван в карте
             $table->string('label', 80);

@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Room;
+use App\Support\JsonFile;
 use Illuminate\Database\Seeder;
 
 class RoomSeeder extends Seeder
@@ -23,7 +24,7 @@ class RoomSeeder extends Seeder
                 ['slug' => $room['slug']],
                 [
                     'name' => $room['name'],
-                    'map' => json_decode(file_get_contents(resource_path("maps/{$room['slug']}.json")), true),
+                    'map' => JsonFile::read(resource_path("maps/{$room['slug']}.json")),
                 ],
             );
         }

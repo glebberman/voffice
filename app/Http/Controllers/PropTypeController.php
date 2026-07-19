@@ -63,11 +63,9 @@ class PropTypeController extends Controller
         $counts = [];
 
         foreach (Room::query()->get(['map']) as $room) {
+            // форму props гарантирует валидация карты (MapUpdateRequest)
             foreach ($room->map['props'] ?? [] as $prop) {
-                $type = $prop['type'] ?? null;
-                if (is_string($type)) {
-                    $counts[$type] = ($counts[$type] ?? 0) + 1;
-                }
+                $counts[$prop['type']] = ($counts[$prop['type']] ?? 0) + 1;
             }
         }
 

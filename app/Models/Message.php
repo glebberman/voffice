@@ -9,6 +9,9 @@ class Message extends Model
 {
     protected $fillable = ['room_id', 'user_id', 'body'];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

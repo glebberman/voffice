@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('messages', function (Blueprint $table) {
+        Schema::create('messages', function (Blueprint $table): void {
             $table->id();
             // комнаты появятся на этапе 3; пока все сообщения в комнате 1
             $table->unsignedBigInteger('room_id')->default(1)->index();

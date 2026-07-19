@@ -10,7 +10,9 @@ use Database\Seeders\PropTypeSeeder;
 use Database\Seeders\RoomSeeder;
 use Illuminate\Foundation\Console\ServeCommand;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class DoorTest extends TestCase
@@ -46,8 +48,9 @@ class DoorTest extends TestCase
 
     /**
      * @param  array<string, mixed>  $payload
+     * @return TestResponse<JsonResponse>
      */
-    private function act(array $payload, ?User $user = null)
+    private function act(array $payload, ?User $user = null): TestResponse
     {
         return $this->actingAs($user ?? User::factory()->create())
             ->postJson("/rooms/{$this->room->slug}/doors", $payload);

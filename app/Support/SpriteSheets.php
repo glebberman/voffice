@@ -2,6 +2,10 @@
 
 namespace App\Support;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+
 /**
  * Листы спрайтов, из которых можно нарезать предметы обстановки.
  *
@@ -27,7 +31,7 @@ class SpriteSheets
         }
 
         $sheets = [];
-        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS));
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
 
         foreach ($files as $file) {
             if ($file->getExtension() !== 'png') {
@@ -45,7 +49,11 @@ class SpriteSheets
         return $sheets;
     }
 
-    /** Размер листа в пикселях — чтобы регион предмета не вылезал за картинку. */
+    /**
+     * Размер листа в пикселях — чтобы регион предмета не вылезал за картинку.
+     *
+     * @return array{width: int, height: int}|null
+     */
     public static function size(string $sheet): ?array
     {
         $path = public_path(self::ROOT.'/'.$sheet);

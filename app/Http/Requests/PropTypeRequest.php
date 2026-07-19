@@ -49,10 +49,13 @@ class PropTypeRequest extends FormRequest
     }
 
     // регион не должен вылезать за пределы листа спрайтов
+    /**
+     * @return list<callable>
+     */
     public function after(): array
     {
         return [
-            function (Validator $validator) {
+            function (Validator $validator): void {
                 $size = SpriteSheets::size((string) $this->input('sheet'));
                 if (! $size) {
                     return;

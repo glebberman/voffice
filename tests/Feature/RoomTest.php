@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Room;
 use App\Models\User;
 use Database\Seeders\RoomSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -64,7 +65,7 @@ class RoomTest extends TestCase
 
     public function test_seeded_maps_are_valid(): void
     {
-        foreach (\App\Models\Room::all() as $room) {
+        foreach (Room::all() as $room) {
             $map = $room->map;
             $width = strlen($map['rows'][0]);
 

@@ -21,6 +21,9 @@ class DoorState extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<Room, $this>
+     */
     public function room(): BelongsTo
     {
         return $this->belongsTo(Room::class);

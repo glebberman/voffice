@@ -24,10 +24,8 @@ class DevUserSeeder extends Seeder
     public function run(): void
     {
         // Пароль у них общеизвестный, так что вне локальной разработки таких
-        // аккаунтов быть не должно.
+        // аккаунтов быть не должно — там сидер молча ничего не делает.
         if (! App::environment('local', 'testing')) {
-            $this->command?->warn('DevUserSeeder пропущен: окружение не local');
-
             return;
         }
 

@@ -29,8 +29,13 @@ jobs:
           composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
           npm install
 
+      # --test: без него Pint молча переформатирует файлы и результат пропадает,
+      # то есть сломать сборку стилем было невозможно
       - name: Run Pint
-        run: vendor/bin/pint
+        run: vendor/bin/pint --test
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
 
       - name: Format Frontend
         run: npm run format
@@ -38,8 +43,3 @@ jobs:
       - name: Lint Frontend
         run: npm run lint
 
-      # - name: Commit Changes
-      #   uses: stefanzweifel/git-auto-commit-action@v5
-      #   with:
-      #     commit_message: fix code style
-      #     commit_options: '--no-verify'

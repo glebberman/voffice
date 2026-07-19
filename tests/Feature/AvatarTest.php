@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Room;
 use App\Models\User;
+use App\Support\JsonFile;
 use Database\Seeders\RoomSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -12,6 +13,7 @@ class AvatarTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** @var array<string, string|false> — tie: false значит «без галстука» */
     private array $valid = [
         'body' => 'female',
         'hair' => 'bob',
@@ -64,7 +66,7 @@ class AvatarTest extends TestCase
 
     public function test_wardrobe_paths_exist_on_disk(): void
     {
-        $wardrobe = json_decode(file_get_contents(resource_path('wardrobe.json')), true);
+        $wardrobe = JsonFile::read(resource_path('wardrobe.json'));
         $base = public_path('assets/lpc/characters/spritesheets');
 
         $paths = [$wardrobe['eyes']];

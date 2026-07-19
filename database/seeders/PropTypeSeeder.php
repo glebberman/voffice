@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\PropType;
+use App\Support\JsonFile;
 use Illuminate\Database\Seeder;
 
 class PropTypeSeeder extends Seeder
@@ -15,7 +16,7 @@ class PropTypeSeeder extends Seeder
      */
     public function run(): void
     {
-        $catalogue = json_decode(file_get_contents(resource_path('props.json')), true)['items'] ?? [];
+        $catalogue = JsonFile::read(resource_path('props.json'))['items'] ?? [];
 
         foreach ($catalogue as $slug => $spec) {
             PropType::updateOrCreate(['slug' => $slug], $spec);

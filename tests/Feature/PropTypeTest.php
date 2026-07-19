@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\PropType;
 use App\Models\Room;
 use App\Models\User;
+use App\Support\JsonFile;
 use Database\Seeders\PropTypeSeeder;
 use Database\Seeders\RoomSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,6 +26,7 @@ class PropTypeTest extends TestCase
     }
 
     /**
+     * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
     private function validType(array $overrides = []): array
@@ -43,7 +45,7 @@ class PropTypeTest extends TestCase
 
     public function test_seeder_fills_catalogue_from_json(): void
     {
-        $file = json_decode(file_get_contents(resource_path('props.json')), true)['items'];
+        $file = JsonFile::read(resource_path('props.json'))['items'];
 
         $this->assertSame(count($file), PropType::count());
         $this->assertSame($file['cabinet']['tall'], PropType::where('slug', 'cabinet')->value('tall'));
@@ -171,7 +173,7 @@ class PropTypeTest extends TestCase
 
         // карта не менялась, но её предметы теперь занимают больше клеток
         $office = Room::where('slug', 'office')->firstOrFail();
-        $this->assertNotEmpty(array_filter($office->map['props'], fn ($p) => $p['type'] === 'cabinet'));
+        $this->assertNotEmpty(array_filter(($office->map['props'] ?? []), fn ($p) => $p['type'] === 'cabinet'));
     }
 
     public function test_map_rejects_type_missing_from_catalogue(): void

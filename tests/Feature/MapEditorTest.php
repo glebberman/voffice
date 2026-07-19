@@ -27,6 +27,9 @@ class MapEditorTest extends TestCase
         $this->office = Room::where('slug', 'office')->firstOrFail();
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function validMap(): array
     {
         return [
@@ -143,7 +146,7 @@ class MapEditorTest extends TestCase
         $map['props'] = [['id' => 'c1', 'type' => 'cabinet', 'x' => 2, 'y' => 5]];
 
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'Офис', 'map' => $map])->assertRedirect();
-        $this->assertSame($map['props'], $this->office->fresh()->map['props']);
+        $this->assertSame($map['props'], ($this->office->fresh()->map['props'] ?? []));
 
         // тип не из каталога
         $unknown = $map;

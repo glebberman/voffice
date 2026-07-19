@@ -7,7 +7,7 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 });
 
 Broadcast::channel('room.{roomId}', function ($user, $roomId) {
-    if (! \App\Models\Room::whereKey($roomId)->exists()) {
+    if (! App\Models\Room::whereKey($roomId)->exists()) {
         return false;
     }
 
