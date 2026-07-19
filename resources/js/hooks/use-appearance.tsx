@@ -12,15 +12,16 @@ const applyTheme = (appearance: Appearance) => {
 
 const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
+// getItem возвращает null, если тему ещё не выбирали, — приведение к Appearance
+// это скрывало, и проверка ниже выглядела лишней
+const savedAppearance = (): Appearance => (localStorage.getItem('appearance') as Appearance | null) ?? 'system';
+
 const handleSystemThemeChange = () => {
-    const currentAppearance = localStorage.getItem('appearance') as Appearance;
-    applyTheme(currentAppearance || 'system');
+    applyTheme(savedAppearance());
 };
 
 export function initializeTheme() {
-    const savedAppearance = (localStorage.getItem('appearance') as Appearance) || 'system';
-
-    applyTheme(savedAppearance);
+    applyTheme(savedAppearance());
 
     // Add the event listener for system theme changes...
     mediaQuery.addEventListener('change', handleSystemThemeChange);
@@ -37,7 +38,7 @@ export function useAppearance() {
 
     useEffect(() => {
         const savedAppearance = localStorage.getItem('appearance') as Appearance | null;
-        updateAppearance(savedAppearance || 'system');
+        updateAppearance(savedAppearance ?? 'system');
 
         return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
     }, []);

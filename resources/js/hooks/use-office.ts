@@ -1,7 +1,7 @@
 import type { AvatarConfig } from '@/game/avatar';
 import { makeMap, tilesBetween, type DoorData, type DoorState, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
-import type { PropCatalogue } from '@/game/props';
 import { findStep } from '@/game/path';
+import type { PropCatalogue } from '@/game/props';
 import { OfficeScene } from '@/game/scene';
 import type {
     BuzzPayload,
@@ -55,7 +55,7 @@ interface PresenceMember {
     avatar?: AvatarConfig | null;
 }
 
-const KEY_TO_DIR: Record<string, Direction> = {
+const KEY_TO_DIR: Partial<Record<string, Direction>> = {
     ArrowUp: 'up',
     ArrowDown: 'down',
     ArrowLeft: 'left',
@@ -139,7 +139,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     onPortalRef.current = options.onPortal;
     const followTargetRef = useRef<number | null>(null);
     const followPathRef = useRef<{ fromX: number; fromY: number; targetX: number; targetY: number; dir: Direction | null; at: number } | null>(null);
-    const buzzRef = useRef<(id: number) => void>(() => {});
+    const buzzRef = useRef<(id: number) => void>(() => undefined);
 
     // WebRTC-рефы: mesh, локальный поток, состав звонка, метры речи и
     // отдельные ссылки на треки камеры/экрана для screen sharing
@@ -160,10 +160,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const manualRef = useRef<ManualStatus>('available');
     const awayRef = useRef(false);
     const lastActivityRef = useRef(performance.now());
-    const broadcastStatusRef = useRef<() => void>(() => {});
-    const sendReactionRef = useRef<(emoji: string) => void>(() => {});
+    const broadcastStatusRef = useRef<() => void>(() => undefined);
+    const sendReactionRef = useRef<(emoji: string) => void>(() => undefined);
     // обработчик клавиш вешается один раз, поэтому свежие функции — через рефы
-    const useDoorRef = useRef<(withLock: boolean) => void>(() => {});
+    const toggleDoorRef = useRef<(withLock: boolean) => void>(() => undefined);
     const nearestDoorRef = useRef<(x: number, y: number) => DoorData | null>(() => null);
 
     const effectiveStatus = (): PlayerStatus => (awayRef.current ? 'away' : manualRef.current);
@@ -186,8 +186,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
     /** Дверь, до которой можно дотянуться: строго соседняя клетка. */
     const nearestDoor = useCallback(
-        (x: number, y: number): DoorData | null =>
-            map.doors.find((d) => Math.abs(d.x - x) + Math.abs(d.y - y) === 1) ?? null,
+        (x: number, y: number): DoorData | null => map.doors.find((d) => Math.abs(d.x - x) + Math.abs(d.y - y) === 1) ?? null,
         [map],
     );
 
@@ -208,7 +207,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
      * Решение принимает сервер (он же знает про замок и сторону), клиент лишь
      * называет действие и говорит, откуда тянется.
      */
-    const useDoor = useCallback(
+    const toggleDoor = useCallback(
         async (withLock: boolean) => {
             const me = playersRef.current.get(userRef.current.id);
             if (!me) {
@@ -252,7 +251,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         const host = canvasHost.current;
 
         if (host) {
-            scene.init(host).then(() => {
+            void scene.init(host).then(() => {
                 if (cancelled) {
                     return;
                 }
@@ -265,7 +264,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 scene.resize(rect.width, rect.height);
 
                 resizeObserver = new ResizeObserver((entries) => {
-                    const box = entries[0]?.contentRect;
+                    const box = entries.at(0)?.contentRect;
                     if (box) {
                         scene.resize(box.width, box.height);
                     }
@@ -326,7 +325,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         };
         broadcastStatusRef.current = broadcastStatus;
 
-        useDoorRef.current = useDoor;
+        // ref обещает void, а useDoor асинхронный — ошибку он обрабатывает сам
+        toggleDoorRef.current = (withLock: boolean) => void toggleDoor(withLock);
         nearestDoorRef.current = nearestDoor;
 
         sendReactionRef.current = (emoji: string) => {
@@ -583,11 +583,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 setOnline((prev) => prev.filter((m) => m.id !== member.id));
                 playersRef.current.delete(member.id);
                 sceneRef.current?.removePlayer(member.id);
-                setStatuses((prev) => {
-                    const next = { ...prev };
-                    delete next[member.id];
-                    return next;
-                });
+                setStatuses((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => Number(id) !== member.id)));
                 setPeerInCall(member.id, false); // рвём звонок с ушедшим
             })
             .listenForWhisper('pos', (p: MovePayload) => {
@@ -662,7 +658,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 if (!sceneRef.current?.isVisible(sx, sy)) {
                     return;
                 }
-                sceneRef.current?.showBubble(p.id, p.text);
+                sceneRef.current.showBubble(p.id, p.text);
                 setMessages((prev) =>
                     [...prev, { key: `${p.id}-${Date.now()}-${Math.random()}`, userId: p.id, name: p.name, text: p.text, at: Date.now() }].slice(
                         -MAX_MESSAGES,
@@ -786,7 +782,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 const me = playersRef.current.get(userRef.current.id);
                 if (me && nearestDoorRef.current(me.x, me.y)) {
                     e.preventDefault();
-                    void useDoorRef.current(e.shiftKey);
+                    toggleDoorRef.current(e.shiftKey);
                     return;
                 }
             }
@@ -856,7 +852,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         };
 
         const moveLoop = setInterval(() => {
-            const dir = pressedRef.current[pressedRef.current.length - 1];
+            const dir = pressedRef.current.at(-1);
             if (dir) {
                 tryStep(dir);
                 return;
@@ -877,6 +873,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             }
         }, 40);
 
+        // Контейнеры создаются один раз и не переприсваиваются, поэтому взять
+        // их здесь — то же самое, что читать .current в уборке, но правило
+        // видит стабильную переменную, а не поле рефа.
+        const meters = metersRef.current;
+        const inCall = inCallRef.current;
+        const players = playersRef.current;
+
         return () => {
             cancelled = true;
             clearInterval(heartbeat);
@@ -891,22 +894,22 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             window.removeEventListener('mousemove', markActivity);
             // сворачиваем звонок: закрываем соединения, глушим метры и потоки
             mesh.destroy();
-            for (const meter of metersRef.current.values()) {
+            for (const meter of meters.values()) {
                 meter.destroy();
             }
-            metersRef.current.clear();
+            meters.clear();
             localStreamRef.current?.getTracks().forEach((t) => t.stop());
             screenStreamRef.current?.getTracks().forEach((t) => t.stop());
             localStreamRef.current = null;
             screenStreamRef.current = null;
-            inCallRef.current.clear();
+            inCall.clear();
             meshRef.current = null;
             callApiRef.current = null;
             resizeObserver?.disconnect();
             echo.leave(channelName);
             scene.destroy();
             sceneRef.current = null;
-            playersRef.current.clear();
+            players.clear();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

@@ -21,10 +21,11 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 export default function Profile({ mustVerifyEmail, status }: { mustVerifyEmail: boolean; status?: string }) {
     const { auth } = usePage<SharedData>().props;
+    const user = auth.user;
 
     const { data, setData, patch, errors, processing, recentlySuccessful } = useForm({
-        name: auth.user.name,
-        email: auth.user.email,
+        name: user?.name,
+        email: user?.email,
     });
 
     const submit: FormEventHandler = (e) => {
@@ -75,7 +76,7 @@ export default function Profile({ mustVerifyEmail, status }: { mustVerifyEmail: 
                             <InputError className="mt-2" message={errors.email} />
                         </div>
 
-                        {mustVerifyEmail && auth.user.email_verified_at === null && (
+                        {mustVerifyEmail && user?.email_verified_at === null && (
                             <div>
                                 <p className="mt-2 text-sm text-neutral-800">
                                     Your email address is unverified.

@@ -56,8 +56,8 @@ export function AvatarEditor({ open, onOpenChange, initial, onSave }: AvatarEdit
         setCfg((prev) => ({
             body,
             hair: prev.hair,
-            top: next.tops[prev.top] ? prev.top : Object.keys(next.tops)[0],
-            legs: next.legs[prev.legs] ? prev.legs : Object.keys(next.legs)[0],
+            top: prev.top in next.tops ? prev.top : Object.keys(next.tops)[0],
+            legs: prev.legs in next.legs ? prev.legs : Object.keys(next.legs)[0],
             tie: next.tie ? prev.tie : false,
         }));
     };
@@ -177,7 +177,7 @@ export function AvatarEditor({ open, onOpenChange, initial, onSave }: AvatarEdit
                     <Button variant="outline" onClick={() => onOpenChange(false)}>
                         Отмена
                     </Button>
-                    <Button onClick={save} disabled={saving || layers.length === 0}>
+                    <Button onClick={() => void save()} disabled={saving || layers.length === 0}>
                         {saving ? 'Сохраняю…' : 'Сохранить'}
                     </Button>
                 </DialogFooter>

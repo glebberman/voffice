@@ -24,7 +24,7 @@ interface PropsPageProps extends SharedData {
     errors: Record<string, string>;
 }
 
-type Draft = {
+interface Draft {
     slug: string;
     label: string;
     sheet: string;
@@ -33,7 +33,7 @@ type Draft = {
     w: number;
     h: number;
     tall: number;
-};
+}
 
 const emptyDraft = (sheet: string): Draft => ({ slug: '', label: '', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 });
 
@@ -109,12 +109,13 @@ export default function PropsCatalogue() {
     }, [types, selectedId, draft.slug]);
 
     // лист спрайтов грузим один раз на смену выбора
+    const sheet = draft.sheet;
     useEffect(() => {
-        if (!draft.sheet) {
+        if (!sheet) {
             return;
         }
         const img = new Image();
-        img.src = propSheetUrl(draft);
+        img.src = propSheetUrl({ sheet });
         img.onload = () => {
             imageRef.current = img;
             setImageSize({ width: img.naturalWidth, height: img.naturalHeight });
@@ -122,7 +123,7 @@ export default function PropsCatalogue() {
         return () => {
             img.onload = null;
         };
-    }, [draft.sheet]);
+    }, [sheet]);
 
     const redraw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -277,7 +278,7 @@ export default function PropsCatalogue() {
         router.delete(`/props/${type.id}`, { preserveScroll: true });
     };
 
-    const errorList = Object.values(errors ?? {});
+    const errorList = Object.values(errors);
 
     return (
         <AppLayout breadcrumbs={[{ title: 'Каталог предметов', href: '/props' }]}>

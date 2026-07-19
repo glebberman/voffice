@@ -141,6 +141,9 @@ export class OfficeScene {
     private reachableFrom: number | null = null; // из какой клетки посчитано
     private selfId: number | null = null;
     private destroyed = false;
+    // Pixi по типам обещает renderer всегда, но до init() его нет — держим
+    // собственный признак готовности, иначе проверки выглядят лишними
+    private ready = false;
     private sceneTime = 0;
     private portalPads: Graphics[] = [];
     private objectNodes = new Map<string, { icon: Text; ring: Graphics; baseY: number }>();
@@ -221,6 +224,7 @@ export class OfficeScene {
         this.updateChunks();
         this.centerCameraOnSelf(true);
 
+        this.ready = true;
         this.app.ticker.add((ticker) => this.tick(ticker.deltaMS));
     }
 
@@ -465,14 +469,14 @@ export class OfficeScene {
 
     /** Принудительный кадр: в фоновой вкладке тикер Pixi засыпает. */
     forceTick(deltaMS = 16): void {
-        if (!this.destroyed && this.app.renderer) {
+        if (this.ready && !this.destroyed) {
             this.tick(deltaMS);
         }
     }
 
     /** Пересчёт под новый размер контейнера (ResizeObserver на странице). */
     resize(width: number, height: number): void {
-        if (this.destroyed || !this.app.renderer || width <= 0 || height <= 0) {
+        if (!this.ready || this.destroyed || width <= 0 || height <= 0) {
             return;
         }
         this.viewport = { width: Math.round(width), height: Math.round(height) };
@@ -489,7 +493,8 @@ export class OfficeScene {
         }
         this.players.clear();
         this.chunks.clear(); // сами Graphics уничтожит app.destroy вместе с деревом
-        if (this.app.renderer) {
+        if (this.ready) {
+            this.ready = false;
             this.app.destroy(true, { children: true });
         }
     }
@@ -569,7 +574,7 @@ export class OfficeScene {
 
     // (пере)загрузка слоёв персонажа: асинхронно, между тенью и именем
     private loadLook(id: number, sprite: PlayerSprite, cfg?: AvatarConfig | null): void {
-        loadAvatar(id, cfg).then((layers) => {
+        void loadAvatar(id, cfg).then((layers) => {
             if (this.destroyed || this.players.get(id) !== sprite || layers.length === 0) {
                 return;
             }
@@ -833,12 +838,13 @@ export class OfficeScene {
     }
 
     private applyFrame(sprite: PlayerSprite): void {
-        if (!sprite.avatar) {
+        const avatar = sprite.avatar;
+        if (!avatar) {
             return;
         }
         const row = DIR_ROW[sprite.dir];
         sprite.charSprites.forEach((s, i) => {
-            const frames = sprite.avatar![i][row];
+            const frames = avatar[i][row];
             s.texture = frames[Math.min(sprite.frame, frames.length - 1)];
         });
     }
@@ -1006,7 +1012,7 @@ export class OfficeScene {
             ring.visible = false;
             this.world.addChild(ring);
 
-            const icon = new Text({ text: OBJECT_EMOJI[obj.type] ?? OBJECT_EMOJI.link, style: { fontSize: 15 } });
+            const icon = new Text({ text: OBJECT_EMOJI[obj.type], style: { fontSize: 15 } });
             icon.anchor.set(0.5, 1);
             icon.position.set(cx, baseY);
             this.world.addChild(icon);

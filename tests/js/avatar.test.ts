@@ -37,11 +37,12 @@ describe('lookFromConfig (сохранённый образ)', () => {
     it('валидный конфиг собирает слои, галстук по флагу', () => {
         const layers = lookFromConfig({ body: 'male', hair: 'bob', top: 'formal', legs: 'formal', tie: true });
         expect(layers).not.toBeNull();
-        expect(layers!.some((l) => l.includes('neck/tie'))).toBe(true);
-        expect(layers!.at(-1)).toBe('hair/bob/adult/walk.png');
+        expect(layers?.some((l) => l.includes('neck/tie'))).toBe(true);
+        expect(layers?.at(-1)).toBe('hair/bob/adult/walk.png');
 
         const noTie = lookFromConfig({ body: 'male', hair: 'bob', top: 'formal', legs: 'formal' });
-        expect(noTie!.some((l) => l.includes('neck/tie'))).toBe(false);
+        expect(noTie).not.toBeNull();
+        expect(noTie?.some((l) => l.includes('neck/tie'))).toBe(false);
     });
 
     it('невалидные ключи отклоняются', () => {
@@ -57,8 +58,8 @@ describe('lookFromConfig (сохранённый образ)', () => {
         for (const [bodyKey, body] of Object.entries(WARDROBE.bodies)) {
             for (const topKey of Object.keys(body.tops)) {
                 for (const legsKey of Object.keys(body.legs)) {
-                    const layers = lookFromConfig({ body: bodyKey, hair: WARDROBE.hairs[0], top: topKey, legs: legsKey, tie: true })!;
-                    for (const layer of layers) {
+                    const layers = lookFromConfig({ body: bodyKey, hair: WARDROBE.hairs[0], top: topKey, legs: legsKey, tie: true });
+                    for (const layer of layers ?? []) {
                         if (!existsSync(`${SPRITES_DIR}/${layer}`)) {
                             missing.add(layer);
                         }

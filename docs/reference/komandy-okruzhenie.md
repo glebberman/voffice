@@ -11,18 +11,43 @@
 
 ## Разработка
 
-| Команда                                  | Что делает                        |
-| ---------------------------------------- | --------------------------------- |
-| `npm run dev`                            | Vite в режиме разработки (HMR)    |
-| `npm run build`                          | продакшн-сборка фронтенда         |
-| `npm run format`                         | Prettier                          |
-| `npm run lint`                           | ESLint                            |
-| `php artisan migrate`                    | миграции                          |
-| `php artisan db:seed`                    | сидеры (предметы, комнаты, юзеры) |
-| `php artisan db:seed --class=RoomSeeder` | только комнаты                    |
+| Команда                                  | Что делает                         |
+| ---------------------------------------- | ---------------------------------- |
+| `npm run dev`                            | Vite в режиме разработки (HMR)     |
+| `npm run build`                          | продакшн-сборка фронтенда          |
+| `npm run format`                         | Prettier исправляет форматирование |
+| `npm run format:check`                   | проверка форматирования (как в CI) |
+| `npm run lint`                           | ESLint без правок (как в CI)       |
+| `npm run lint:fix`                       | ESLint с автоисправлением          |
+| `npm run types`                          | проверка типов (`tsc --noEmit`)    |
+| `php artisan migrate`                    | миграции                           |
+| `php artisan db:seed`                    | сидеры (предметы, комнаты, юзеры)  |
+| `php artisan db:seed --class=RoomSeeder` | только комнаты                     |
 
 В Docker выполняйте artisan-команды внутри контейнера:
 `docker compose exec app php artisan …`.
+
+## Качество фронтенда
+
+Линтер — **ESLint** с типизированными правилами (`strictTypeChecked` +
+`stylisticTypeChecked` из typescript-eslint). Они видят типы, а не только
+синтаксис: ловят забытые `await`, небезопасные `any` из библиотек и условия,
+которые всегда истинны.
+
+Правила держатся без единого `eslint-disable`. Два правила настроены, а не
+отключены: `no-confusing-void-expression` с `ignoreArrowShorthand` (иначе
+каждый `onClick={() => setX(...)}` требует скобок) и
+`restrict-template-expressions` с `allowNumber`. Выключено одно —
+`consistent-type-definitions`: оно требует `interface`, а `useForm` от Inertia
+принимает только `type` с индексной сигнатурой.
+
+`tsconfig.json` покрывает и тесты с конфигами, так что `npm run types`
+проверяет их тоже.
+
+В CI все три команды проверяют, а не правят: `format:check`, `lint` без
+`--fix`, `types`. Раньше `format` и `lint` запускались в режиме записи —
+файлы молча переформатировались, результат выбрасывался, и сломать сборку
+стилем было невозможно.
 
 ## Качество PHP-кода
 

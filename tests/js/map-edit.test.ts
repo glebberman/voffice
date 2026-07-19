@@ -24,7 +24,7 @@ describe('resizeRows', () => {
         // периметр — стена
         expect(bigger[0]).toBe('########');
         expect(bigger[6]).toBe('########');
-        expect(bigger.every((r) => r[0] === '#' && r[7] === '#')).toBe(true);
+        expect(bigger.every((r) => r.startsWith('#') && r[7] === '#')).toBe(true);
     });
 
     it('уменьшает карту, обрезая лишнее', () => {

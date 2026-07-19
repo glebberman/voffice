@@ -1,5 +1,5 @@
 import { makeMap, type MapData } from '@/game/map';
-import { propBaseRect, propFits, propFootprint, propSpec, propTallRect, type PropCatalogue } from '@/game/props';
+import { propBaseRect, propFits, propFootprint, propSpec, propTallRect, type PropCatalogue, type PropSpec } from '@/game/props';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -11,6 +11,16 @@ const LPC_DIR = fileURLToPath(new URL('../../public/assets/lpc', import.meta.url
 // сидируется (PropTypeSeeder), поэтому проверяем именно его.
 const PROP_SPECS = catalogueFile.items as PropCatalogue;
 const PROP_TYPES = Object.keys(PROP_SPECS);
+
+/** Спека по ключу: в каталоге она есть, иначе тест и должен упасть. */
+const spec = (type: string): PropSpec => {
+    const found = PROP_SPECS[type];
+    if (!found) {
+        throw new Error(`в каталоге нет предмета ${type}`);
+    }
+
+    return found;
+};
 
 // карта 8×8: пол внутри, стена по периметру
 const baseMap = (props: MapData['props']): MapData => ({
@@ -24,17 +34,17 @@ const baseMap = (props: MapData['props']): MapData => ({
 
 describe('каталог предметов', () => {
     it('спрайт каждого предмета есть на диске', () => {
-        const missing = PROP_TYPES.filter((type) => !existsSync(`${LPC_DIR}/${PROP_SPECS[type].sheet}`));
+        const missing = PROP_TYPES.filter((type) => !existsSync(`${LPC_DIR}/${spec(type).sheet}`));
         expect(missing).toEqual([]);
     });
 
     it('у каждого предмета положительное основание и неотрицательная высота', () => {
         for (const type of PROP_TYPES) {
-            const spec = PROP_SPECS[type];
-            expect(spec.w, type).toBeGreaterThan(0);
-            expect(spec.h, type).toBeGreaterThan(0);
-            expect(spec.tall, type).toBeGreaterThanOrEqual(0);
-            expect(spec.label, type).toBeTruthy();
+            const item = spec(type);
+            expect(item.w, type).toBeGreaterThan(0);
+            expect(item.h, type).toBeGreaterThan(0);
+            expect(item.tall, type).toBeGreaterThanOrEqual(0);
+            expect(item.label, type).toBeTruthy();
         }
     });
 
@@ -45,9 +55,14 @@ describe('каталог предметов', () => {
 
 describe('геометрия спрайта', () => {
     it('основание лежит под высокой частью, обе части вместе дают полный спрайт', () => {
-        const spec = PROP_SPECS['cabinet']; // 2×1, высота +2
-        const tall = propTallRect(spec)!;
-        const base = propBaseRect(spec);
+        const cabinet = spec('cabinet'); // 2×1, воздух +2
+        const tall = propTallRect(cabinet);
+        const base = propBaseRect(cabinet);
+
+        expect(tall).not.toBeNull();
+        if (tall === null) {
+            return;
+        }
 
         expect(tall.height).toBe(2 * 32);
         expect(base.y).toBe(tall.y + tall.height);
@@ -56,11 +71,11 @@ describe('геометрия спрайта', () => {
     });
 
     it('у предмета без высоты нет верхней части', () => {
-        expect(propTallRect(PROP_SPECS['bin'])).toBeNull();
+        expect(propTallRect(spec('bin'))).toBeNull();
     });
 
     it('footprint перечисляет все клетки основания', () => {
-        const cells = propFootprint(PROP_SPECS['cabinet'], { x: 3, y: 4 });
+        const cells = propFootprint(spec('cabinet'), { x: 3, y: 4 });
         expect(cells).toEqual([
             { x: 3, y: 4 },
             { x: 4, y: 4 },
@@ -112,14 +127,14 @@ describe('проходимость', () => {
 
 describe('помещается ли предмет', () => {
     it('шкаф с воздухом +2 не встаёт вплотную к верхнему краю', () => {
-        const cabinet = PROP_SPECS['cabinet']; // 2×1, воздух +2
+        const cabinet = spec('cabinet'); // 2×1, воздух +2
 
         expect(propFits(cabinet, 2, 1, 8, 8)).toBe(false);
         expect(propFits(cabinet, 2, 2, 8, 8)).toBe(true);
     });
 
     it('основание не должно вылезать вправо и вниз', () => {
-        const cabinet = PROP_SPECS['cabinet'];
+        const cabinet = spec('cabinet');
 
         expect(propFits(cabinet, 7, 4, 8, 8)).toBe(false); // ширина 2, край на 8
         expect(propFits(cabinet, 6, 4, 8, 8)).toBe(true);

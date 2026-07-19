@@ -49,7 +49,11 @@ describe('проходимость двери', () => {
 describe('сторона замка', () => {
     it('замок сверху: с верхней клетки можно, с нижней нельзя', () => {
         const map = makeMap(mapWith([door('north')]));
-        const d = map.doorAt(3, 3)!;
+        const d = map.doorAt(3, 3);
+        expect(d).not.toBeNull();
+        if (d === null) {
+            return;
+        }
 
         expect(map.onLockSide(d, 3, 2)).toBe(true);
         expect(map.onLockSide(d, 3, 4)).toBe(false);
@@ -58,7 +62,11 @@ describe('сторона замка', () => {
 
     it('без замка ни одна сторона не подходит', () => {
         const map = makeMap(mapWith([door()]));
-        const d = map.doorAt(3, 3)!;
+        const d = map.doorAt(3, 3);
+        expect(d).not.toBeNull();
+        if (d === null) {
+            return;
+        }
 
         expect(map.onLockSide(d, 3, 2)).toBe(false);
         expect(map.onLockSide(d, 3, 4)).toBe(false);

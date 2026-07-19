@@ -15,7 +15,9 @@ export interface PropSpec {
     tall: number; // тайлов спрайта НАД основанием — за ними можно проходить
 }
 
-export type PropCatalogue = Record<string, PropSpec>;
+// Значение может отсутствовать: тип предмета приходит из карты, а карту могли
+// сохранить до того, как тип удалили из каталога.
+export type PropCatalogue = Partial<Record<string, PropSpec>>;
 
 const ASSET_BASE = '/assets/lpc';
 

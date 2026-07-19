@@ -5,15 +5,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
     fillRect,
     isWalkableChar,
+    LOCK_SIDE_LABEL,
+    LOCK_SIDES,
     MAX_MAP_SIZE,
     resizeRows,
     setTile,
-    LOCK_SIDE_LABEL,
-    LOCK_SIDES,
     TILE_CHARS,
-    type MapData,
     type DoorData,
     type LockSide,
+    type MapData,
     type MapObjectData,
     type PortalData,
     type PropData,
@@ -104,6 +104,9 @@ export default function RoomEdit() {
     // спрайтшиты предметов грузим один раз; sheetsReady будит перерисовку
     useEffect(() => {
         for (const spec of Object.values(propTypes)) {
+            if (!spec) {
+                continue;
+            }
             const url = propSheetUrl(spec);
             if (sheetsRef.current.has(url)) {
                 continue;
@@ -113,7 +116,7 @@ export default function RoomEdit() {
             img.src = url;
             sheetsRef.current.set(url, img);
         }
-    }, []);
+    }, [propTypes]);
 
     const toTile = useCallback(
         (clientX: number, clientY: number) => {
@@ -251,7 +254,7 @@ export default function RoomEdit() {
             ctx.strokeStyle = '#ffc914';
             ctx.strokeRect(left * cell - pan.x, top * cell - pan.y, w * cell, h * cell);
         }
-    }, [rows, spawn, objects, portals, props, doors, sheetsReady, cell, pan, canvasSize, rectPreview, width, height]);
+    }, [rows, spawn, objects, portals, props, doors, propTypes, sheetsReady, cell, pan, canvasSize, rectPreview, width, height]);
 
     const applyTile = (x: number, y: number) => {
         if (tool === 'spawn') {
@@ -322,7 +325,7 @@ export default function RoomEdit() {
         }
         if (state.mode === 'rect') {
             setRectPreview({ x0: state.startX, y0: state.startY, x1: tile.x, y1: tile.y });
-        } else if (state.mode === 'paint') {
+        } else {
             applyTile(tile.x, tile.y);
         }
     };
@@ -535,8 +538,8 @@ export default function RoomEdit() {
                             <span className="text-muted-foreground ml-auto text-xs">{doors.length} шт.</span>
                         </div>
                         <p className="text-muted-foreground mb-2 text-xs">
-                            Инструмент «Дверь» ставит её на проходимую клетку — обычно в проём стены. Закрытая дверь не пропускает и прячет
-                            всё, до чего без неё не добраться. Замок можно повернуть только с той стороны, где он висит.
+                            Инструмент «Дверь» ставит её на проходимую клетку — обычно в проём стены. Закрытая дверь не пропускает и прячет всё, до
+                            чего без неё не добраться. Замок можно повернуть только с той стороны, где он висит.
                         </p>
                         {doors.length > 0 && (
                             <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
@@ -602,6 +605,10 @@ export default function RoomEdit() {
                         <div className="grid grid-cols-2 gap-1.5">
                             {propKeys.map((type) => {
                                 const spec = propTypes[type];
+                                if (!spec) {
+                                    return null;
+                                }
+
                                 return (
                                     <button
                                         key={type}

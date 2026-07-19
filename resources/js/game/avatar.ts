@@ -65,15 +65,30 @@ function buildLayers(body: WardrobeBody, topPath: string, legsPath: string, hair
     return layers;
 }
 
+/**
+ * Значение по ключу, пришедшему извне. Тип словаря обещает, что значение есть
+ * всегда, но ключ приходит из сохранённого конфига и может устареть — здесь
+ * это признаётся явно.
+ */
+function lookup<T>(dict: Record<string, T>, key: string): T | undefined {
+    return Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : undefined;
+}
+
 // образ из сохранённых настроек; null — если конфиг не проходит по гардеробу
 export function lookFromConfig(cfg: AvatarConfig | null | undefined): string[] | null {
     if (!cfg) {
         return null;
     }
-    const body = WARDROBE.bodies[cfg.body];
-    const top = body?.tops[cfg.top];
-    const legs = body?.legs[cfg.legs];
-    if (!body || !top || !legs || !WARDROBE.hairs.includes(cfg.hair)) {
+    // Ключи приходят от пользователя, поэтому каждый шаг проверяем до
+    // обращения к следующему: раньше body.tops читали до проверки самого body,
+    // и незнакомое тело роняло сборку образа вместо возврата null.
+    const body = lookup(WARDROBE.bodies, cfg.body);
+    if (!body) {
+        return null;
+    }
+    const top = lookup(body.tops, cfg.top);
+    const legs = lookup(body.legs, cfg.legs);
+    if (!top || !legs || !WARDROBE.hairs.includes(cfg.hair)) {
         return null;
     }
     return buildLayers(body, top.path, legs.path, cfg.hair, cfg.tie === true);

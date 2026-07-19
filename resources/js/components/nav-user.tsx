@@ -12,6 +12,10 @@ export function NavUser() {
     const { state } = useSidebar();
     const isMobile = useIsMobile();
 
+    if (!auth.user) {
+        return null; // приватный лэйаут, но общий тип этого не знает
+    }
+
     return (
         <SidebarMenu>
             <SidebarMenuItem>

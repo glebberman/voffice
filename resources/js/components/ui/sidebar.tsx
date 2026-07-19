@@ -19,7 +19,7 @@ const SIDEBAR_WIDTH_MOBILE = '18rem';
 const SIDEBAR_WIDTH_ICON = '3rem';
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b';
 
-type SidebarContext = {
+interface SidebarContext {
     state: 'expanded' | 'collapsed';
     open: boolean;
     setOpen: (open: boolean) => void;
@@ -27,7 +27,7 @@ type SidebarContext = {
     setOpenMobile: (open: boolean) => void;
     isMobile: boolean;
     toggleSidebar: () => void;
-};
+}
 
 const SidebarContext = React.createContext<SidebarContext | null>(null);
 
@@ -72,7 +72,11 @@ const SidebarProvider = React.forwardRef<
 
     // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
-        return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
+        if (isMobile) {
+            setOpenMobile((open) => !open);
+        } else {
+            setOpen((open) => !open);
+        }
     }, [isMobile, setOpen, setOpenMobile]);
 
     // Listen for mobile navigation events
@@ -225,7 +229,7 @@ const Sidebar = React.forwardRef<
 });
 Sidebar.displayName = 'Sidebar';
 
-const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.ComponentProps<typeof Button>>(
+const SidebarTrigger = React.forwardRef<React.ComponentRef<typeof Button>, React.ComponentProps<typeof Button>>(
     ({ className, onClick, ...props }, ref) => {
         const { toggleSidebar } = useSidebar();
 
@@ -291,7 +295,7 @@ const SidebarInset = React.forwardRef<HTMLDivElement, React.ComponentProps<'main
 });
 SidebarInset.displayName = 'SidebarInset';
 
-const SidebarInput = React.forwardRef<React.ElementRef<typeof Input>, React.ComponentProps<typeof Input>>(({ className, ...props }, ref) => {
+const SidebarInput = React.forwardRef<React.ComponentRef<typeof Input>, React.ComponentProps<typeof Input>>(({ className, ...props }, ref) => {
     return (
         <Input
             ref={ref}
@@ -313,7 +317,7 @@ const SidebarFooter = React.forwardRef<HTMLDivElement, React.ComponentProps<'div
 });
 SidebarFooter.displayName = 'SidebarFooter';
 
-const SidebarSeparator = React.forwardRef<React.ElementRef<typeof Separator>, React.ComponentProps<typeof Separator>>(
+const SidebarSeparator = React.forwardRef<React.ComponentRef<typeof Separator>, React.ComponentProps<typeof Separator>>(
     ({ className, ...props }, ref) => {
         return <Separator ref={ref} data-sidebar="separator" className={cn('mx-2 w-auto bg-sidebar-border', className)} {...props} />;
     },

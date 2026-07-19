@@ -1,7 +1,8 @@
 import { LucideIcon } from 'lucide-react';
 
 export interface Auth {
-    user: User;
+    // на страницах для гостей (welcome, логин) пользователя нет
+    user: User | null;
 }
 
 export interface BreadcrumbItem {

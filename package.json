@@ -7,11 +7,14 @@
         "dev": "vite",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
-        "lint": "eslint . --fix",
-        "test": "vitest run"
+        "lint": "eslint . --max-warnings=0",
+        "test": "vitest run",
+        "lint:fix": "eslint . --fix",
+        "types": "tsc --noEmit"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
+        "@types/node": "^26.1.1",
         "eslint": "^9.17.0",
         "eslint-config-prettier": "^10.0.1",
         "eslint-plugin-react": "^7.37.3",

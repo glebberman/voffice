@@ -11,7 +11,7 @@ import { type PropCatalogue } from '@/game/props';
 import { type PlayerStatus, type RoomMessage } from '@/game/types';
 import { REACTIONS, useOffice, type ManualStatus } from '@/hooks/use-office';
 import AppLayout from '@/layouts/app-layout';
-import { type SharedData } from '@/types';
+import { type SharedData, type User } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
 import { BellRing, Footprints, MapPin, Pencil, SendHorizontal, Shirt } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -55,21 +55,28 @@ function arrivalPosition(): { x: number; y: number } | null {
 }
 
 export default function RoomShow() {
-    const { room } = usePage<RoomShowProps>().props;
+    const { auth, room } = usePage<RoomShowProps>().props;
+
+    // Страница живёт за middleware auth, но общий тип этого не знает. Проверяем
+    // здесь: внутри RoomView сразу вызываются хуки, а после раннего выхода их
+    // вызывать нельзя.
+    if (!auth.user) {
+        return null;
+    }
 
     // ремоунт на каждую комнату: хук фиксирует карту и канал при монтировании
-    return <RoomView key={room.id} />;
+    return <RoomView key={room.id} me={auth.user} />;
 }
 
-function RoomView() {
-    const { auth, room, history, lastPosition, canEdit, propTypes, doorStates } = usePage<RoomShowProps>().props;
+function RoomView({ me }: { me: User }) {
+    const { room, history, lastPosition, canEdit, propTypes, doorStates } = usePage<RoomShowProps>().props;
     const canvasHost = useRef<HTMLDivElement | null>(null);
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
     const [tab, setTab] = useState<'nearby' | 'room'>('nearby');
     const [editorOpen, setEditorOpen] = useState(false);
     // в этом проекте users.avatar — json-конфиг образа, а не URL картинки
-    const [avatarCfg, setAvatarCfg] = useState<AvatarConfig | null>((auth.user.avatar as unknown as AvatarConfig | null) ?? null);
+    const [avatarCfg, setAvatarCfg] = useState<AvatarConfig | null>((me.avatar as unknown as AvatarConfig | null) ?? null);
 
     const {
         online,
@@ -104,7 +111,7 @@ function RoomView() {
         toggleMic,
         toggleCamera,
         toggleScreen,
-    } = useOffice({ id: auth.user.id, name: auth.user.name, avatar: avatarCfg }, canvasHost, {
+    } = useOffice({ id: me.id, name: me.name, avatar: avatarCfg }, canvasHost, {
         roomId: room.id,
         roomSlug: room.slug,
         map: room.map,
@@ -126,12 +133,13 @@ function RoomView() {
         if (tab === 'nearby') {
             sendMessage(draft);
         } else {
-            void sendRoomMessage(draft).catch(() => {});
+            // сообщение уже в истории на сервере; ошибку сети покажет перезагрузка
+            void sendRoomMessage(draft).catch(() => undefined);
         }
         setDraft('');
     };
 
-    const selfStatus = statuses[auth.user.id] ?? 'available';
+    const selfStatus = statuses[me.id] ?? 'available';
 
     return (
         <AppLayout
@@ -221,7 +229,7 @@ function RoomView() {
                         <ul className="flex flex-col gap-2">
                             {online.map((member) => {
                                 const status = statuses[member.id] ?? 'available';
-                                const isSelf = member.id === auth.user.id;
+                                const isSelf = member.id === me.id;
                                 return (
                                     <li key={member.id} className="group flex items-center gap-2 text-sm">
                                         <span title={STATUS_LABEL[status]} className={`size-2 rounded-full ${STATUS_DOT[status]}`} />
@@ -273,7 +281,7 @@ function RoomView() {
                         callError={callError}
                         localStream={localStream}
                         peers={callPeers}
-                        selfName={auth.user.name}
+                        selfName={me.name}
                         onJoin={joinCall}
                         onLeave={leaveCall}
                         onToggleMic={toggleMic}
@@ -314,14 +322,14 @@ function RoomView() {
                             {tab === 'nearby' &&
                                 messages.map((m) => (
                                     <div key={m.key}>
-                                        <span className={m.userId === auth.user.id ? 'font-semibold' : 'text-primary font-semibold'}>{m.name}: </span>
+                                        <span className={m.userId === me.id ? 'font-semibold' : 'text-primary font-semibold'}>{m.name}: </span>
                                         <span>{m.text}</span>
                                     </div>
                                 ))}
                             {tab === 'room' &&
                                 roomMessages.map((m) => (
                                     <div key={m.id}>
-                                        <span className={m.userId === auth.user.id ? 'font-semibold' : 'text-primary font-semibold'}>{m.name}: </span>
+                                        <span className={m.userId === me.id ? 'font-semibold' : 'text-primary font-semibold'}>{m.name}: </span>
                                         <span>{m.body}</span>
                                     </div>
                                 ))}

@@ -305,8 +305,10 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
 
         const queue = [y * width + x];
         seen.add(queue[0]);
-        for (let head = 0; head < queue.length; head++) {
-            const cell = queue[head];
+        // очередь растёт по ходу обхода, поэтому идём указателем, а не for-of
+        let head = 0;
+        while (head < queue.length) {
+            const cell = queue[head++];
             const cx = cell % width;
             const cy = (cell - cx) / width;
             if (!isWalkable(cx, cy) && cell !== queue[0]) {

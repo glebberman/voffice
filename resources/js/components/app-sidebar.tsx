@@ -45,7 +45,7 @@ const footerNavItems: NavItem[] = [
 
 export function AppSidebar() {
     const { auth } = usePage<SharedData>().props;
-    const items = auth?.user?.is_admin ? [...mainNavItems, ...adminNavItems] : mainNavItems;
+    const items = auth.user?.is_admin ? [...mainNavItems, ...adminNavItems] : mainNavItems;
 
     return (
         <Sidebar collapsible="icon" variant="inset">
