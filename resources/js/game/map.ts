@@ -149,6 +149,8 @@ export interface GameMap {
     isWalkable(x: number, y: number): boolean;
     /** Верхушка стены: тайл над стеной, за которым можно пройти. */
     isWallCrown(x: number, y: number): boolean;
+    /** Накрыта ли клетка тем, что рисуется поверх игроков. */
+    isOverhead(x: number, y: number): boolean;
     isSpotlight(x: number, y: number): boolean;
     zoneAt(x: number, y: number): Zone | null;
     canHear(lx: number, ly: number, sx: number, sy: number): boolean;
@@ -198,6 +200,31 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
     // стена рисуется в два тайла: над ней «верхушка», за которой можно ходить
     const isWallCrown = (x: number, y: number): boolean => tileAt(x, y) !== '#' && tileAt(x, y + 1) === '#';
 
+    // Клетки, накрытые тем, что рисуется ПОВЕРХ игроков: верхушками стен и
+    // частями предметов, висящими в воздухе. Стоя на такой клетке, персонаж
+    // скрыт — только тогда и нужен овал прозрачности.
+    const overhead = new Set<number>();
+    for (const prop of props) {
+        const spec = catalogue[prop.type];
+        if (!spec) {
+            continue;
+        }
+        for (let dy = 1; dy <= spec.tall; dy++) {
+            for (let dx = 0; dx < spec.w; dx++) {
+                overhead.add((prop.y - dy) * width + prop.x + dx);
+            }
+        }
+    }
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (isWallCrown(x, y)) {
+                overhead.add(y * width + x);
+            }
+        }
+    }
+
+    const isOverhead = (x: number, y: number): boolean => overhead.has(y * width + x);
+
     const isSpotlight = (x: number, y: number): boolean => tileAt(x, y) === '*';
 
     const zoneAt = (x: number, y: number): Zone | null => data.zones.find((z) => x >= z.x1 && x <= z.x2 && y >= z.y1 && y <= z.y2) ?? null;
@@ -226,6 +253,7 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
         tileAt,
         isWalkable,
         isWallCrown,
+        isOverhead,
         isSpotlight,
         zoneAt,
         canHear,

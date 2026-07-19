@@ -126,6 +126,42 @@ describe('помещается ли предмет', () => {
     });
 });
 
+describe('где персонаж накрыт верхним слоем', () => {
+    // Овал прозрачности включается только на этих клетках: иначе он дырявил бы
+    // предмет, мимо которого просто проходят сбоку.
+    it('клетки над основанием шкафа накрыты, а сам шкаф и соседи — нет', () => {
+        const map = makeMap(baseMap([{ id: 'p', type: 'cabinet', x: 2, y: 4 }]), PROP_SPECS); // 2×1, воздух +2
+
+        expect(map.isOverhead(2, 3)).toBe(true); // первый тайл воздуха
+        expect(map.isOverhead(2, 2)).toBe(true); // второй
+        expect(map.isOverhead(3, 3)).toBe(true); // предмет шириной 2
+
+        expect(map.isOverhead(2, 4)).toBe(false); // основание — под игроками
+        expect(map.isOverhead(2, 1)).toBe(false); // выше предмета
+        expect(map.isOverhead(4, 3)).toBe(false); // сбоку — тот самый баг
+    });
+
+    it('у предмета без воздуха накрытых клеток нет', () => {
+        const map = makeMap(baseMap([{ id: 'p', type: 'desk-vertical', x: 2, y: 4 }]), PROP_SPECS); // 1×2, воздух 0
+
+        expect(map.isOverhead(2, 3)).toBe(false);
+        expect(map.isOverhead(2, 4)).toBe(false);
+    });
+
+    it('верхушка стены накрывает клетку, на которой стоит персонаж', () => {
+        const map = makeMap(baseMap([]), PROP_SPECS);
+
+        expect(map.isOverhead(3, 6)).toBe(true); // под ней нижняя стена карты
+        expect(map.isOverhead(3, 5)).toBe(false); // строкой выше уже чистый пол
+    });
+
+    it('предмет неизвестного типа не даёт накрытых клеток', () => {
+        const map = makeMap(baseMap([{ id: 'p', type: 'нет-такого', x: 2, y: 4 }]), PROP_SPECS);
+
+        expect(map.isOverhead(2, 3)).toBe(false);
+    });
+});
+
 describe('верхушка стены', () => {
     it('клетка над стеной — верхушка, а сама стена — нет', () => {
         const map = makeMap(baseMap([]), PROP_SPECS);

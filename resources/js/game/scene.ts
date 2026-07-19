@@ -182,7 +182,7 @@ export class OfficeScene {
         this.world.addChild(this.cutoutMask, this.ghostMask);
         this.overheadLayer.setMask({ mask: this.cutoutMask, inverse: true });
         this.overheadGhost.mask = this.ghostMask;
-        this.drawCutout(-9999, -9999, -9999);
+        this.hideCutout();
 
         this.drawProps();
 
@@ -246,6 +246,18 @@ export class OfficeScene {
         for (const mask of [this.cutoutMask, this.ghostMask]) {
             mask.clear().poly(shape).fill(0xffffff);
         }
+    }
+
+    /**
+     * Убирает вырез: overhead виден целиком, ghost — нет.
+     *
+     * Маски именно очищаются, а не уводятся за край карты: пустая инверсная
+     * маска ничего не вычитает, а пустая прямая ничего не показывает — ровно
+     * то, что нужно.
+     */
+    private hideCutout(): void {
+        this.cutoutMask.clear();
+        this.ghostMask.clear();
     }
 
     /** Состояние камеры — для отладки и e2e-проверок. */
@@ -567,8 +579,18 @@ export class OfficeScene {
 
             if (id === this.selfId) {
                 this.proximityRing.position.set(sprite.root.x, sprite.root.y);
-                // овал держится на середине роста персонажа, а не на ногах
-                this.drawCutout(sprite.root.x, sprite.root.y - 14, sprite.root.y - SPRITE_TOP);
+                // Вырез нужен, только когда персонаж реально под чем-то стоит.
+                // Иначе овал дырявил бы предмет, мимо которого просто проходят
+                // сбоку. Клетку берём по центру спрайта — она же и определяет,
+                // накрыт ли он: root.x/y и есть центр тайла.
+                const tileX = Math.floor(sprite.root.x / TILE);
+                const tileY = Math.floor(sprite.root.y / TILE);
+                if (this.map.isOverhead(tileX, tileY)) {
+                    // овал держится на середине роста персонажа, а не на ногах
+                    this.drawCutout(sprite.root.x, sprite.root.y - 14, sprite.root.y - SPRITE_TOP);
+                } else {
+                    this.hideCutout();
+                }
             }
         }
 
