@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 // Две комнаты, соединённые единственным проёмом на (3,3):
 //   строки 1-2 — верхняя комната, строки 4-5 — нижняя.
-const rows = ['#######', '#.....#', '#.....#', '###.###', '#.....#', '#.....#', '#######'];
+const rows = ['#######', '#.DDD.#', '#.....#', '###.###', '#.....#', '#.DDD.#', '#######'];
 
 const mapWith = (doors: DoorData[]): MapData => ({
     rows,
@@ -95,12 +95,32 @@ describe('достижимость', () => {
         expect(seen.has(cell(1, 1))).toBe(false);
     });
 
-    it('стены в набор не попадают', () => {
+    // Затемнять нужно недоступные ПОМЕЩЕНИЯ, а не каждый непроходимый тайл:
+    // иначе в тень уходили бы столы и стены той комнаты, где персонаж стоит.
+    it('своя мебель и свои стены видны, хотя по ним не пройти', () => {
+        const map = makeMap(mapWith([door()]));
+        map.setDoorState('d1', { closed: true, locked: false });
+        const seen = map.reachableFrom(1, 5); // нижняя комната
+
+        expect(map.isWalkable(2, 5)).toBe(false); // это стол
+        expect(seen.has(cell(2, 5))).toBe(true); // но он в своей комнате — видно
+        expect(seen.has(cell(0, 5))).toBe(true); // и стена своей комнаты
+    });
+
+    it('мебель чужой комнаты за закрытой дверью не видна', () => {
+        const map = makeMap(mapWith([door()]));
+        map.setDoorState('d1', { closed: true, locked: false });
+        const seen = map.reachableFrom(1, 5);
+
+        expect(seen.has(cell(2, 1))).toBe(false); // стол верхней комнаты
+        expect(seen.has(cell(1, 1))).toBe(false); // и её пол
+    });
+
+    it('глухой угол карты в набор не попадает', () => {
         const map = makeMap(mapWith([]));
         const seen = map.reachableFrom(1, 1);
 
         expect(seen.has(cell(0, 0))).toBe(false);
-        expect(seen.has(cell(0, 3))).toBe(false);
     });
 
     it('из-за пределов карты набор пуст', () => {

@@ -288,8 +288,14 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
     };
 
     /**
-     * Обход в ширину по проходимым клеткам. Закрытая дверь в набор попадает
-     * (её видно со своей стороны), но дальше через неё не идём.
+     * Обход в ширину по проходимым клеткам с захватом их границы.
+     *
+     * В набор попадают не только клетки, где можно стоять, но и всё, что к ним
+     * примыкает: своя мебель, свои стены, закрытая дверь. Идти дальше от них
+     * нельзя — поэтому за стеной и за закрытой дверью обход не продолжается.
+     *
+     * Без границы затемнялся бы каждый непроходимый тайл, включая столы и
+     * диваны в той самой комнате, где персонаж стоит.
      */
     const reachableFrom = (x: number, y: number): Set<number> => {
         const seen = new Set<number>();
@@ -318,11 +324,11 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
                     continue;
                 }
                 const next = ny * width + nx;
-                if (seen.has(next) || (!isWalkable(nx, ny) && !doorAt(nx, ny))) {
+                if (seen.has(next)) {
                     continue;
                 }
                 seen.add(next);
-                queue.push(next);
+                queue.push(next); // непроходимые попадут в набор, но из очереди не раскроются
             }
         }
 
