@@ -375,6 +375,11 @@ export default function PropsCatalogue() {
                             <Save className="size-3.5" />
                             {selectedId === null ? 'Добавить в каталог' : 'Сохранить'}
                         </Button>
+
+                        <p className="text-muted-foreground mt-2 text-xs">
+                            Каталог живёт в базе. Чтобы правка пережила пересоздание базы, выгрузите её в репозиторий:{' '}
+                            <code>php artisan voffice:export</code>
+                        </p>
                     </div>
 
                     <div className="border-sidebar-border/70 dark:border-sidebar-border rounded-xl border p-4">

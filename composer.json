@@ -63,7 +63,8 @@
             "@php vendor/bin/phpstan analyse --no-progress --memory-limit=1G"
         ],
         "fix": "@php vendor/bin/pint",
-        "stan": "@php vendor/bin/phpstan analyse --memory-limit=1G"
+        "stan": "@php vendor/bin/phpstan analyse --memory-limit=1G",
+        "export": "@php artisan voffice:export"
     },
     "extra": {
         "laravel": {

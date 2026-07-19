@@ -820,6 +820,11 @@ export default function RoomEdit() {
                             Отмена
                         </Button>
                     </div>
+
+                    <p className="text-muted-foreground text-xs">
+                        Карта сохраняется в базу. Чтобы правка пережила пересоздание базы, выгрузите её в репозиторий:{' '}
+                        <code>php artisan voffice:export</code>
+                    </p>
                 </div>
             </div>
         </AppLayout>
