@@ -3,6 +3,7 @@ import { makeMap, tilesBetween, type DoorData, type DoorState, type MapData, typ
 import { findStep } from '@/game/path';
 import type { PropCatalogue } from '@/game/props';
 import { OfficeScene } from '@/game/scene';
+import { newTabId, shouldYieldTo, type TabHello } from '@/game/tabs';
 import type {
     BuzzPayload,
     CallPayload,
@@ -98,6 +99,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const [nearbyObject, setNearbyObject] = useState<MapObjectData | null>(null);
     // короткое «Заперто» под картой, когда дверь не поддалась
     const [doorHint, setDoorHint] = useState<string | null>(null);
+    // офис открыт в другой вкладке: эта замолчала и ничего не отправляет
+    const [yielded, setYielded] = useState(false);
     const [activeObject, setActiveObject] = useState<MapObjectData | null>(null);
 
     // звонок по близости (WebRTC)
@@ -132,6 +135,11 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     userRef.current = user;
     const spawnRef = useRef(map.resolveSpawn(options.initialPosition));
     const lastSavedPosRef = useRef<string | null>(null);
+    // Управление держит вкладка, открытая последней. Идентификатор живёт
+    // столько же, сколько страница, и отличает нас от других своих вкладок.
+    const tabIdRef = useRef(newTabId());
+    const yieldedRef = useRef(false);
+    const takeOverRef = useRef<() => void>(() => undefined);
     const nearbyObjectRef = useRef<MapObjectData | null>(null);
     const activeObjectRef = useRef<MapObjectData | null>(null);
     const portalTriggeredRef = useRef(false);
@@ -295,7 +303,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
         buzzRef.current = (id: number) => {
             const me = self();
-            channel.whisper('buzz', { from: me.id, name: me.name, to: id } satisfies BuzzPayload);
+            say('buzz', { from: me.id, name: me.name, to: id } satisfies BuzzPayload);
             // разрешение спрашиваем в жесте пользователя — пригодится, когда
             // buzz прилетит нам самим
             if ('Notification' in window && Notification.permission === 'default') {
@@ -303,9 +311,45 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             }
         };
 
+        /**
+         * Отправка в канал. Уступившая вкладка молчит: иначе остальные клиенты
+         * получали бы два потока позиций от одного пользователя.
+         */
+        const say = (event: string, payload: object) => {
+            if (yieldedRef.current) {
+                return;
+            }
+            channel.whisper(event, payload);
+        };
+
+        /** Здоровается новая вкладка — остальные вкладки этого юзера замолкают. */
+        const helloFromThisTab = () => {
+            channel.whisper('hello', { id: userRef.current.id, tab: tabIdRef.current } satisfies TabHello);
+        };
+
+        const yieldControl = () => {
+            if (yieldedRef.current) {
+                return;
+            }
+            yieldedRef.current = true;
+            setYielded(true);
+            pressedRef.current = [];
+            followTargetRef.current = null;
+            if (inCallRef.current.has(userRef.current.id)) {
+                callApiRef.current?.leave(); // из молчащей вкладки звонок вести нельзя
+            }
+        };
+
+        takeOverRef.current = () => {
+            yieldedRef.current = false;
+            setYielded(false);
+            helloFromThisTab(); // остальные вкладки уступят в ответ
+            announce();
+        };
+
         const announce = () => {
             const me = self();
-            channel.whisper('pos', {
+            say('pos', {
                 id: me.id,
                 x: me.x,
                 y: me.y,
@@ -321,7 +365,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             me.status = status;
             playersRef.current.set(me.id, me);
             updateStatusState(me.id, status);
-            channel.whisper('status', { id: me.id, status } satisfies StatusPayload);
+            say('status', { id: me.id, status } satisfies StatusPayload);
         };
         broadcastStatusRef.current = broadcastStatus;
 
@@ -335,13 +379,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             }
             const me = self();
             sceneRef.current?.showReaction(me.id, emoji);
-            channel.whisper('react', { id: me.id, emoji } satisfies ReactPayload);
+            say('react', { id: me.id, emoji } satisfies ReactPayload);
         };
 
         // --- WebRTC mesh ---
         const mesh = new Mesh(userRef.current.id, {
             sendSignal: (to, signal) => {
-                channel.whisper('rtc', { from: userRef.current.id, to, signal } satisfies RtcSignalPayload);
+                say('rtc', { from: userRef.current.id, to, signal } satisfies RtcSignalPayload);
             },
             onRemoteStream: (peerId, stream) => {
                 const member = playersRef.current.get(peerId);
@@ -421,7 +465,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         const isInCall = () => inCallRef.current.has(userRef.current.id);
 
         const announceCall = () => {
-            channel.whisper('call', { id: userRef.current.id, inCall: isInCall() } satisfies CallPayload);
+            say('call', { id: userRef.current.id, inCall: isInCall() } satisfies CallPayload);
         };
 
         // реконсиляция состава звонка по флагу из heartbeat / call-события
@@ -560,6 +604,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             .here((members: PresenceMember[]) => {
                 setConnected(true);
                 setOnline(members);
+                helloFromThisTab();
                 const me = self();
                 upsert(me);
                 setZone(map.zoneAt(me.x, me.y));
@@ -585,6 +630,12 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 sceneRef.current?.removePlayer(member.id);
                 setStatuses((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => Number(id) !== member.id)));
                 setPeerInCall(member.id, false); // рвём звонок с ушедшим
+            })
+            // другая вкладка этого же пользователя взяла управление
+            .listenForWhisper('hello', (p: TabHello) => {
+                if (shouldYieldTo(p, userRef.current.id, tabIdRef.current)) {
+                    yieldControl();
+                }
             })
             .listenForWhisper('pos', (p: MovePayload) => {
                 applyRemoteMove(p);
@@ -677,7 +728,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         // периодическое сохранение позиции (+ при закрытии страницы)
         const savePosition = (viaBeacon = false) => {
             const me = playersRef.current.get(userRef.current.id);
-            if (!me) {
+            if (!me || yieldedRef.current) {
                 return;
             }
             const key = `${me.x}:${me.y}`;
@@ -715,6 +766,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         };
 
         const tryStep = (dir: Direction) => {
+            if (yieldedRef.current) {
+                return;
+            }
             const now = performance.now();
             if (now - lastStepRef.current < STEP_INTERVAL_MS) {
                 return;
@@ -747,7 +801,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
             playersRef.current.set(me.id, me);
             sceneRef.current?.movePlayer(me.id, me.x, me.y, me.dir);
-            channel.whisper('move', {
+            say('move', {
                 id: me.id,
                 x: me.x,
                 y: me.y,
@@ -921,7 +975,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 return;
             }
             const me = playersRef.current.get(userRef.current.id);
-            if (!me) {
+            // из уступившей вкладки не говорим: её место в комнате занято другой
+            if (!me || yieldedRef.current) {
                 return;
             }
             const echo = getEcho();
@@ -1025,6 +1080,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         myStatus,
         nearbyObject,
         doorHint,
+        yielded,
+        takeOver: () => takeOverRef.current(),
         activeObject,
         closeObject,
         sendMessage,

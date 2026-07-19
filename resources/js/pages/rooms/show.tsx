@@ -88,6 +88,8 @@ function RoomView({ me }: { me: User }) {
         myStatus,
         nearbyObject,
         doorHint,
+        yielded,
+        takeOver,
         activeObject,
         closeObject,
         sendMessage,
@@ -151,6 +153,16 @@ function RoomView({ me }: { me: User }) {
             <Head title={room.name} />
             <div className="flex h-full flex-1 flex-col gap-4 p-4 lg:flex-row">
                 <div className="flex min-w-0 flex-1 flex-col gap-3">
+                    {yielded && (
+                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950">
+                            <span className="text-amber-900 dark:text-amber-200">
+                                Офис открыт в другой вкладке — управление у неё, эта вкладка молчит.
+                            </span>
+                            <Button size="sm" variant="outline" className="ml-auto" onClick={takeOver}>
+                                Играть здесь
+                            </Button>
+                        </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-2">
                         <Badge variant={connected ? 'default' : 'secondary'}>{connected ? 'В сети' : 'Подключение…'}</Badge>
                         {zone && (
