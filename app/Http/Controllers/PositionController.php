@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\CurrentUser;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
@@ -15,7 +16,7 @@ class PositionController extends Controller
             'room_id' => ['required', 'integer', 'exists:rooms,id'],
         ]);
 
-        $request->user()->forceFill([
+        CurrentUser::of($request)->forceFill([
             'last_x' => $validated['x'],
             'last_y' => $validated['y'],
             'last_room_id' => $validated['room_id'],

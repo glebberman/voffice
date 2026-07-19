@@ -7,6 +7,7 @@ use App\Http\Controllers\PositionController;
 use App\Http\Controllers\PropTypeController;
 use App\Http\Controllers\RoomController;
 use App\Models\Room;
+use App\Support\CurrentUser;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -21,7 +22,7 @@ Route::middleware(['auth'])->group(function (): void {
 
     // привычная ссылка: ведёт в последнюю комнату пользователя
     Route::get('office', function () {
-        $room = Room::find(request()->user()->last_room_id) ?? Room::where('slug', 'office')->firstOrFail();
+        $room = Room::find(CurrentUser::of(request())->last_room_id) ?? Room::where('slug', 'office')->firstOrFail();
 
         return redirect()->route('rooms.show', $room);
     })->name('office');

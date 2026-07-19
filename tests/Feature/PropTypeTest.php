@@ -45,10 +45,10 @@ class PropTypeTest extends TestCase
 
     public function test_seeder_fills_catalogue_from_json(): void
     {
-        $file = JsonFile::read(resource_path('props.json'))['items'];
+        $file = $this->nested(JsonFile::read(resource_path('props.json')), 'items');
 
         $this->assertSame(count($file), PropType::count());
-        $this->assertSame($file['cabinet']['tall'], PropType::where('slug', 'cabinet')->value('tall'));
+        $this->assertSame($this->nested($file, 'cabinet')['tall'], PropType::where('slug', 'cabinet')->value('tall'));
     }
 
     public function test_admin_flag_reaches_the_frontend(): void
@@ -57,11 +57,11 @@ class PropTypeTest extends TestCase
         // обычному пользователю страница ответит 403, и вести его туда незачем
         // fresh(): фабрика не выставляет is_admin на самой модели, а в
         // приложении пользователь всегда приходит из БД со всеми колонками
-        $this->actingAs(User::factory()->admin()->create()->fresh())
+        $this->actingAs(User::factory()->admin()->create()->refresh())
             ->get('/dashboard')
             ->assertInertia(fn (Assert $p) => $p->where('auth.user.is_admin', true));
 
-        $this->actingAs(User::factory()->create()->fresh())
+        $this->actingAs(User::factory()->create()->refresh())
             ->get('/dashboard')
             ->assertInertia(fn (Assert $p) => $p->where('auth.user.is_admin', false));
     }
@@ -169,7 +169,7 @@ class PropTypeTest extends TestCase
             ->put("/props/{$cabinet->id}", $this->validType(['slug' => 'cabinet', 'label' => 'Шкаф', 'h' => 3, 'tall' => 0]))
             ->assertRedirect('/props');
 
-        $this->assertSame(3, $cabinet->fresh()->h);
+        $this->assertSame(3, $cabinet->refresh()->h);
 
         // карта не менялась, но её предметы теперь занимают больше клеток
         $office = Room::where('slug', 'office')->firstOrFail();

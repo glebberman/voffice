@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\PropType;
 use App\Support\JsonFile;
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
 class PropTypeSeeder extends Seeder
 {
@@ -16,10 +17,20 @@ class PropTypeSeeder extends Seeder
      */
     public function run(): void
     {
-        $catalogue = JsonFile::read(resource_path('props.json'))['items'] ?? [];
+        $catalogue = JsonFile::read(resource_path('props.json'))['items'] ?? null;
+        if (! is_array($catalogue)) {
+            throw new RuntimeException('props.json: нет раздела items');
+        }
 
         foreach ($catalogue as $slug => $spec) {
-            PropType::updateOrCreate(['slug' => $slug], $spec);
+            if (! is_array($spec)) {
+                throw new RuntimeException("props.json: предмет {$slug} — не объект");
+            }
+            $fields = [];
+            foreach ($spec as $field => $value) {
+                $fields[(string) $field] = $value;
+            }
+            PropType::updateOrCreate(['slug' => (string) $slug], $fields);
         }
     }
 }

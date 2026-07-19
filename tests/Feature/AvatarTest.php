@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Room;
 use App\Models\User;
-use App\Support\JsonFile;
+use App\Support\Wardrobe;
 use Database\Seeders\RoomSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -60,13 +60,15 @@ class AvatarTest extends TestCase
             'channel_name' => "presence-room.{$roomId}",
         ]);
 
-        $channelData = json_decode($response->json('channel_data'), true);
-        $this->assertSame($this->valid, $channelData['user_info']['avatar']);
+        $channelData = $this->decodeJson($response->json('channel_data'));
+        $this->assertSame($this->valid, $this->nested($channelData, 'user_info')['avatar']);
     }
 
     public function test_wardrobe_paths_exist_on_disk(): void
     {
-        $wardrobe = JsonFile::read(resource_path('wardrobe.json'));
+        // тот же разбор, которым пользуется приложение: заодно проверяем,
+        // что форма wardrobe.json не разъехалась — Wardrobe::all() падает сам
+        $wardrobe = Wardrobe::all();
         $base = public_path('assets/lpc/characters/spritesheets');
 
         $paths = [$wardrobe['eyes']];
@@ -74,11 +76,11 @@ class AvatarTest extends TestCase
             $paths[] = $body['body'];
             $paths[] = $body['head'];
             $paths[] = $body['feet'];
-            if ($body['tie']) {
+            if ($body['tie'] !== false) {
                 $paths[] = $body['tie'];
             }
-            foreach ([...$body['tops'], ...$body['legs']] as $item) {
-                $paths[] = $item['path'];
+            foreach ([...array_values($body['tops']), ...array_values($body['legs'])] as $path) {
+                $paths[] = $path;
             }
         }
         foreach ($wardrobe['hairs'] as $hair) {

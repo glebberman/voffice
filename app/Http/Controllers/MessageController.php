@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\MessageSent;
+use App\Support\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,7 +16,7 @@ class MessageController extends Controller
             'room_id' => ['required', 'integer', 'exists:rooms,id'],
         ]);
 
-        $message = $request->user()->messages()->create([
+        $message = CurrentUser::of($request)->messages()->create([
             'room_id' => $validated['room_id'],
             'body' => $validated['body'],
         ]);
@@ -25,9 +26,9 @@ class MessageController extends Controller
         return response()->json([
             'id' => $message->id,
             'userId' => $message->user_id,
-            'name' => $request->user()->name,
+            'name' => CurrentUser::of($request)->name,
             'body' => $message->body,
-            'at' => $message->created_at->toIso8601String(),
+            'at' => $message->sentAt(),
         ], 201);
     }
 }

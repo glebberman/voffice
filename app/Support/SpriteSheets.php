@@ -5,6 +5,7 @@ namespace App\Support;
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use SplFileInfo;
 
 /**
  * Листы спрайтов, из которых можно нарезать предметы обстановки.
@@ -34,7 +35,7 @@ class SpriteSheets
         $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
 
         foreach ($files as $file) {
-            if ($file->getExtension() !== 'png') {
+            if (! $file instanceof SplFileInfo || $file->getExtension() !== 'png') {
                 continue;
             }
             $relative = str_replace('\\', '/', substr($file->getPathname(), strlen($root) + 1));

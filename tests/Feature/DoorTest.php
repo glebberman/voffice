@@ -146,7 +146,7 @@ class DoorTest extends TestCase
     {
         $this->act(['id' => 'plain', 'action' => 'close', 'x' => 3, 'y' => 2])->assertOk();
 
-        $states = DoorState::forRoom($this->room->fresh());
+        $states = DoorState::forRoom($this->room->refresh());
 
         $this->assertSame(['closed' => true, 'locked' => false], $states['plain']);
         // нетронутая дверь строки не заводит — она просто открыта

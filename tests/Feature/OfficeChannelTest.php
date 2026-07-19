@@ -41,11 +41,11 @@ class OfficeChannelTest extends TestCase
 
         $response->assertOk()->assertJsonStructure(['auth', 'channel_data']);
 
-        $channelData = json_decode($response->json('channel_data'), true);
+        $channelData = $this->decodeJson($response->json('channel_data'));
 
         // pusher-протокол сериализует user_id строкой
         $this->assertEquals($user->id, $channelData['user_id']);
-        $this->assertSame(['id' => $user->id, 'name' => 'Аня', 'avatar' => null], $channelData['user_info']);
+        $this->assertSame(['id' => $user->id, 'name' => 'Аня', 'avatar' => null], $this->nested($channelData, 'user_info'));
     }
 
     public function test_nonexistent_room_channel_is_forbidden(): void

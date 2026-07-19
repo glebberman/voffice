@@ -27,7 +27,10 @@ class PropType extends Model
      * Каталог в том же виде, в каком его ждут клиент (game/props.ts) и
      * валидация карты: словарь slug → спека.
      *
-     * @return array<string, array<string, mixed>>
+     * Поля перечислены руками, а не через only(): так тип спеки известен
+     * точно, и проверки геометрии не работают с mixed.
+     *
+     * @return array<string, array{label: string, sheet: string, sx: int, sy: int, w: int, h: int, tall: int}>
      */
     public static function catalogue(): array
     {
@@ -35,7 +38,15 @@ class PropType extends Model
             ->orderBy('id')
             ->get()
             ->keyBy('slug')
-            ->map(fn (self $type) => $type->only(['label', 'sheet', 'sx', 'sy', 'w', 'h', 'tall']))
+            ->map(fn (self $type) => [
+                'label' => $type->label,
+                'sheet' => $type->sheet,
+                'sx' => $type->sx,
+                'sy' => $type->sy,
+                'w' => $type->w,
+                'h' => $type->h,
+                'tall' => $type->tall,
+            ])
             ->all();
     }
 }

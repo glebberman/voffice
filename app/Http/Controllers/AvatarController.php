@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Support\JsonFile;
+use App\Support\CurrentUser;
+use App\Support\Wardrobe;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -12,10 +13,10 @@ class AvatarController extends Controller
     public function update(Request $request): JsonResponse
     {
         // гардероб — единый источник правды для клиента и валидации
-        $wardrobe = JsonFile::read(resource_path('wardrobe.json'));
+        $wardrobe = Wardrobe::all();
 
         $body = $request->input('body');
-        $bodyConfig = $wardrobe['bodies'][$body] ?? null;
+        $bodyConfig = is_string($body) ? ($wardrobe['bodies'][$body] ?? null) : null;
 
         $validated = $request->validate([
             'body' => ['required', 'string', Rule::in(array_keys($wardrobe['bodies']))],
@@ -33,7 +34,7 @@ class AvatarController extends Controller
             'tie' => (bool) ($validated['tie'] ?? false),
         ];
 
-        $request->user()->forceFill(['avatar' => $avatar])->save();
+        CurrentUser::of($request)->forceFill(['avatar' => $avatar])->save();
 
         return response()->json($avatar);
     }

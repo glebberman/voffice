@@ -26,6 +26,11 @@ class JsonFile
             throw new RuntimeException("{$path} — не JSON-объект");
         }
 
-        return $data;
+        $out = [];
+        foreach ($data as $key => $value) {
+            $out[(string) $key] = $value;
+        }
+
+        return $out;
     }
 }

@@ -42,7 +42,7 @@ class DevUserSeederTest extends TestCase
 
         $this->seed(DevUserSeeder::class);
 
-        $this->assertTrue(Hash::check('свой-пароль', $anya->fresh()->password));
+        $this->assertTrue(Hash::check('свой-пароль', $anya->refresh()->password));
     }
 
     public function test_skipped_outside_local(): void

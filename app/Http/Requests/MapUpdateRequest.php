@@ -16,17 +16,78 @@ class MapUpdateRequest extends FormRequest
         return (bool) $this->user()?->is_admin;
     }
 
-    /** @var array<string, mixed>|null кеш на время запроса: каталог читается дважды */
+    /**
+     * Кеш на время запроса: каталог читается дважды.
+     *
+     * @var array<string, array{label: string, sheet: string, sx: int, sy: int, w: int, h: int, tall: int}>|null
+     */
     private ?array $catalogue = null;
 
     /**
      * Каталог предметов — тот же, что уезжает клиенту (game/props.ts).
      *
-     * @return array<string, mixed>
+     * @return array<string, array{label: string, sheet: string, sx: int, sy: int, w: int, h: int, tall: int}>
      */
     private function propCatalogue(): array
     {
         return $this->catalogue ??= PropType::catalogue();
+    }
+
+    /**
+     * Строки карты — если они действительно массив строк.
+     *
+     * Здесь мы работаем с сырым вводом: правила из rules() могли не пройти, и
+     * тогда в map лежит что угодно. Возвращаем null — проверять геометрию
+     * нечего, об ошибке уже сообщат правила.
+     *
+     * @return list<string>|null
+     */
+    private function mapRows(): ?array
+    {
+        $map = $this->input('map');
+        if (! is_array($map) || ! is_array($map['rows'] ?? null)) {
+            return null;
+        }
+
+        $rows = [];
+        foreach ($map['rows'] as $row) {
+            if (! is_string($row)) {
+                return null;
+            }
+            $rows[] = $row;
+        }
+
+        return $rows === [] ? null : $rows;
+    }
+
+    /**
+     * Список из карты (objects, portals, doors, props) — всегда массив.
+     *
+     * @return list<mixed>
+     */
+    private function mapList(string $key): array
+    {
+        $map = $this->input('map');
+        $items = is_array($map) ? ($map[$key] ?? []) : [];
+
+        return is_array($items) ? array_values($items) : [];
+    }
+
+    /**
+     * Координаты элемента карты. Всё, что не целое число, считаем промахом
+     * мимо карты: −1 не пройдёт проверку границ.
+     *
+     * @return array{int, int}
+     */
+    private static function pointOf(mixed $item): array
+    {
+        if (! is_array($item)) {
+            return [-1, -1];
+        }
+        $x = $item['x'] ?? null;
+        $y = $item['y'] ?? null;
+
+        return [is_int($x) ? $x : -1, is_int($y) ? $y : -1];
     }
 
     /**
@@ -84,12 +145,11 @@ class MapUpdateRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                $map = $this->input('map');
-                if (! is_array($map) || ! is_array($map['rows'] ?? null)) {
-                    return;
+                $rows = $this->mapRows();
+                if ($rows === null) {
+                    return; // структуру уже забраковали правила из rules()
                 }
 
-                $rows = $map['rows'];
                 $width = strlen($rows[0]);
                 $height = count($rows);
 
@@ -99,21 +159,24 @@ class MapUpdateRequest extends FormRequest
                     }
                 }
 
-                $inBounds = fn ($x, $y) => $x >= 0 && $y >= 0 && $x < $width && $y < $height;
+                $inBounds = fn (int $x, int $y): bool => $x >= 0 && $y >= 0 && $x < $width && $y < $height;
+                $walkable = fn (int $x, int $y): bool => in_array($rows[$y][$x] ?? '#', self::WALKABLE, true);
 
-                $sx = $map['spawn']['x'] ?? -1;
-                $sy = $map['spawn']['y'] ?? -1;
-                if (! $inBounds($sx, $sy) || ! in_array($rows[$sy][$sx] ?? '#', self::WALKABLE, true)) {
+                [$sx, $sy] = self::pointOf($this->input('map.spawn'));
+                if (! $inBounds($sx, $sy) || ! $walkable($sx, $sy)) {
                     $validator->errors()->add('map.spawn', 'Точка спавна должна быть на проходимой клетке');
                 }
 
-                foreach ($map['objects'] ?? [] as $i => $obj) {
-                    if (! $inBounds($obj['x'] ?? -1, $obj['y'] ?? -1)) {
+                foreach ($this->mapList('objects') as $i => $obj) {
+                    [$x, $y] = self::pointOf($obj);
+                    if (! $inBounds($x, $y)) {
                         $validator->errors()->add("map.objects.{$i}", 'Объект за пределами карты');
                     }
                 }
-                foreach ($map['portals'] ?? [] as $i => $portal) {
-                    if (! $inBounds($portal['x'] ?? -1, $portal['y'] ?? -1)) {
+
+                foreach ($this->mapList('portals') as $i => $portal) {
+                    [$x, $y] = self::pointOf($portal);
+                    if (! $inBounds($x, $y)) {
                         $validator->errors()->add("map.portals.{$i}", 'Портал за пределами карты');
                     }
                 }
@@ -121,10 +184,9 @@ class MapUpdateRequest extends FormRequest
                 // дверь должна стоять на проходимой клетке — иначе через неё
                 // никогда не пройти, и она просто ломает связность карты
                 $seenDoors = [];
-                foreach ($map['doors'] ?? [] as $i => $doorItem) {
-                    $x = $doorItem['x'] ?? -1;
-                    $y = $doorItem['y'] ?? -1;
-                    if (! $inBounds($x, $y) || ! in_array($rows[$y][$x] ?? '#', self::WALKABLE, true)) {
+                foreach ($this->mapList('doors') as $i => $doorItem) {
+                    [$x, $y] = self::pointOf($doorItem);
+                    if (! $inBounds($x, $y) || ! $walkable($x, $y)) {
                         $validator->errors()->add("map.doors.{$i}", 'Дверь должна стоять на проходимой клетке');
 
                         continue;
@@ -136,15 +198,15 @@ class MapUpdateRequest extends FormRequest
                     $seenDoors[$key] = true;
                 }
 
-                // предмет должен целиком помещаться: и основание, и высокая часть
+                // предмет должен целиком помещаться: и основание, и часть в воздухе
                 $catalogue = $this->propCatalogue();
-                foreach ($map['props'] ?? [] as $i => $prop) {
-                    $spec = $catalogue[$prop['type'] ?? ''] ?? null;
-                    if (! $spec) {
+                foreach ($this->mapList('props') as $i => $prop) {
+                    $type = is_array($prop) ? ($prop['type'] ?? null) : null;
+                    $spec = is_string($type) ? ($catalogue[$type] ?? null) : null;
+                    if ($spec === null) {
                         continue; // недопустимый тип уже поймали правила выше
                     }
-                    $x = $prop['x'] ?? -1;
-                    $y = $prop['y'] ?? -1;
+                    [$x, $y] = self::pointOf($prop);
                     if (! $inBounds($x, $y) || ! $inBounds($x + $spec['w'] - 1, $y + $spec['h'] - 1)) {
                         $validator->errors()->add("map.props.{$i}", 'Предмет за пределами карты');
                     } elseif ($y - $spec['tall'] < 0) {

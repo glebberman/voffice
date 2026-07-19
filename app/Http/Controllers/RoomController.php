@@ -7,6 +7,7 @@ use App\Models\DoorState;
 use App\Models\Message;
 use App\Models\PropType;
 use App\Models\Room;
+use App\Support\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -23,7 +24,7 @@ class RoomController extends Controller
 
     public function show(Request $request, Room $room): Response
     {
-        $user = $request->user();
+        $user = CurrentUser::of($request);
 
         $history = Message::query()
             ->where('room_id', $room->id)
@@ -36,9 +37,9 @@ class RoomController extends Controller
             ->map(fn (Message $m) => [
                 'id' => $m->id,
                 'userId' => $m->user_id,
-                'name' => $m->user->name,
+                'name' => $m->authorName(),
                 'body' => $m->body,
-                'at' => $m->created_at->toIso8601String(),
+                'at' => $m->sentAt(),
             ]);
 
         return Inertia::render('rooms/show', [
@@ -58,7 +59,7 @@ class RoomController extends Controller
 
     public function edit(Request $request, Room $room): Response
     {
-        abort_unless((bool) $request->user()->is_admin, 403);
+        abort_unless((bool) CurrentUser::of($request)->is_admin, 403);
 
         return Inertia::render('rooms/edit', [
             'room' => $room->only(['id', 'slug', 'name', 'map']),

@@ -56,13 +56,13 @@ class PropTypeRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                $size = SpriteSheets::size((string) $this->input('sheet'));
+                $size = SpriteSheets::size($this->string('sheet')->toString());
                 if (! $size) {
                     return;
                 }
 
-                $right = (int) $this->input('sx') + (int) $this->input('w') * self::TILE;
-                $bottom = (int) $this->input('sy') + ((int) $this->input('h') + (int) $this->input('tall')) * self::TILE;
+                $right = $this->integer('sx') + $this->integer('w') * self::TILE;
+                $bottom = $this->integer('sy') + ($this->integer('h') + $this->integer('tall')) * self::TILE;
 
                 if ($right > $size['width'] || $bottom > $size['height']) {
                     $validator->errors()->add('sheet', "Регион вылезает за лист ({$size['width']}×{$size['height']} px)");

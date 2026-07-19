@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\PropTypeRequest;
 use App\Models\PropType;
 use App\Models\Room;
+use App\Support\CurrentUser;
 use App\Support\SpriteSheets;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,7 @@ class PropTypeController extends Controller
 {
     public function index(Request $request): Response
     {
-        abort_unless((bool) $request->user()->is_admin, 403);
+        abort_unless((bool) CurrentUser::of($request)->is_admin, 403);
 
         return Inertia::render('props/index', [
             'types' => PropType::query()->orderBy('id')->get(['id', 'slug', 'label', 'sheet', 'sx', 'sy', 'w', 'h', 'tall']),
@@ -41,7 +42,7 @@ class PropTypeController extends Controller
 
     public function destroy(Request $request, PropType $propType): RedirectResponse
     {
-        abort_unless((bool) $request->user()->is_admin, 403);
+        abort_unless((bool) CurrentUser::of($request)->is_admin, 403);
 
         $used = $this->usage()[$propType->slug] ?? 0;
         if ($used > 0) {

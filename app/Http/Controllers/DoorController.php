@@ -29,8 +29,8 @@ class DoorController extends Controller
             'y' => ['required', 'integer', 'min:0'],
         ]);
 
-        $door = collect($room->map['doors'] ?? [])->firstWhere('id', $data['id']);
-        if (! $door) {
+        $door = $this->findDoor($room, $data['id']);
+        if ($door === null) {
             throw ValidationException::withMessages(['id' => 'В этой комнате нет такой двери']);
         }
 
@@ -72,12 +72,28 @@ class DoorController extends Controller
     }
 
     /**
-     * @param  array<string, mixed>  $door
+     * Дверь из карты комнаты по её id.
+     *
+     * @return array{id: string, x: int, y: int, lock: string|null}|null
+     */
+    private function findDoor(Room $room, string $id): ?array
+    {
+        foreach ($room->map['doors'] ?? [] as $door) {
+            if ($door['id'] === $id) {
+                return $door;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{id: string, x: int, y: int, lock: string|null}  $door
      */
     private function assertAtLock(array $door, int $x, int $y): void
     {
-        $side = $door['lock'] ?? null;
-        if (! $side) {
+        $side = $door['lock'];
+        if ($side === null || ! isset(self::LOCK_SIDE_STEP[$side])) {
             throw ValidationException::withMessages(['id' => 'У этой двери нет замка']);
         }
 
