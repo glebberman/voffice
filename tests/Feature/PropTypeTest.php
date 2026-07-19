@@ -49,6 +49,21 @@ class PropTypeTest extends TestCase
         $this->assertSame($file['cabinet']['tall'], PropType::where('slug', 'cabinet')->value('tall'));
     }
 
+    public function test_admin_flag_reaches_the_frontend(): void
+    {
+        // по нему сайдбар решает, показывать ли пункт «Каталог предметов»:
+        // обычному пользователю страница ответит 403, и вести его туда незачем
+        // fresh(): фабрика не выставляет is_admin на самой модели, а в
+        // приложении пользователь всегда приходит из БД со всеми колонками
+        $this->actingAs(User::factory()->admin()->create()->fresh())
+            ->get('/dashboard')
+            ->assertInertia(fn (Assert $p) => $p->where('auth.user.is_admin', true));
+
+        $this->actingAs(User::factory()->create()->fresh())
+            ->get('/dashboard')
+            ->assertInertia(fn (Assert $p) => $p->where('auth.user.is_admin', false));
+    }
+
     public function test_only_admin_sees_catalogue(): void
     {
         $this->actingAs(User::factory()->create())->get('/props')->assertForbidden();
