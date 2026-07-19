@@ -109,6 +109,11 @@ export interface MapData {
 
 const WALKABLE = new Set(['.', ':', ',', ';', '*']);
 
+/** Проходим ли сам тайл — без учёта предметов и дверей поверх него. */
+export function isWalkableChar(ch: string): boolean {
+    return WALKABLE.has(ch);
+}
+
 // список тайлов для палитры редактора карт
 export const TILE_CHARS = ['.', '#', ':', ',', ';', 'D', 'K', 'T', 'S', 'P', '*'] as const;
 

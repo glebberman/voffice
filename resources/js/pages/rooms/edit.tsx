@@ -4,11 +4,16 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     fillRect,
+    isWalkableChar,
     MAX_MAP_SIZE,
     resizeRows,
     setTile,
+    LOCK_SIDE_LABEL,
+    LOCK_SIDES,
     TILE_CHARS,
     type MapData,
+    type DoorData,
+    type LockSide,
     type MapObjectData,
     type PortalData,
     type PropData,
@@ -18,7 +23,7 @@ import { TILE_COLOR, TILE_LABEL } from '@/game/tile-colors';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Armchair, Hand, Plus, Save, Square, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { Armchair, DoorOpen, Hand, Plus, Save, Square, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface RoomInfo {
@@ -34,7 +39,7 @@ interface EditProps extends SharedData {
     propTypes: PropCatalogue;
 }
 
-type Tool = 'paint' | 'rect' | 'spawn' | 'pan' | 'prop';
+type Tool = 'paint' | 'rect' | 'spawn' | 'pan' | 'prop' | 'door';
 
 const OBJECT_TYPES = [
     { value: 'board', label: 'Доска' },
@@ -57,6 +62,7 @@ export default function RoomEdit() {
     const [objects, setObjects] = useState<MapObjectData[]>(room.map.objects);
     const [portals, setPortals] = useState<PortalData[]>(room.map.portals);
     const [props, setProps] = useState<PropData[]>(room.map.props ?? []);
+    const [doors, setDoors] = useState<DoorData[]>(room.map.doors ?? []);
     const [propType, setPropType] = useState<string>(propKeys[0] ?? '');
     const [tool, setTool] = useState<Tool>('paint');
     const [brush, setBrush] = useState<string>('.');
@@ -193,6 +199,26 @@ export default function RoomEdit() {
             ctx.strokeRect(prop.x * cell - pan.x + 0.5, prop.y * cell - pan.y + 0.5, spec.w * cell - 1, spec.h * cell - 1);
         }
 
+        // двери: рамка на клетке, а точка показывает сторону, где висит замок
+        for (const d of doors) {
+            if (d.x < x0 - 1 || d.x > x1 + 1 || d.y < y0 - 1 || d.y > y1 + 1) {
+                continue;
+            }
+            const dx = d.x * cell - pan.x;
+            const dy = d.y * cell - pan.y;
+            ctx.strokeStyle = d.lock ? '#b45309' : '#6b6478';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(dx + 1, dy + 1, cell - 2, cell - 2);
+            if (d.lock) {
+                ctx.fillStyle = '#b45309';
+                const lx = d.lock === 'west' ? dx + 4 : d.lock === 'east' ? dx + cell - 4 : dx + cell / 2;
+                const ly = d.lock === 'north' ? dy + 4 : d.lock === 'south' ? dy + cell - 4 : dy + cell / 2;
+                ctx.beginPath();
+                ctx.arc(lx, ly, Math.max(2, cell / 10), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
         // маркеры рисуются обходом самих массивов — без поиска по каждой клетке
         const marker = (x: number, y: number, glyph: string) => {
             if (x < x0 - 1 || x > x1 + 1 || y < y0 - 1 || y > y1 + 1) {
@@ -225,11 +251,19 @@ export default function RoomEdit() {
             ctx.strokeStyle = '#ffc914';
             ctx.strokeRect(left * cell - pan.x, top * cell - pan.y, w * cell, h * cell);
         }
-    }, [rows, spawn, objects, portals, props, sheetsReady, cell, pan, canvasSize, rectPreview, width, height]);
+    }, [rows, spawn, objects, portals, props, doors, sheetsReady, cell, pan, canvasSize, rectPreview, width, height]);
 
     const applyTile = (x: number, y: number) => {
         if (tool === 'spawn') {
             setSpawn({ x, y });
+            return;
+        }
+        if (tool === 'door') {
+            // дверь только на проходимой клетке — на стене она заперла бы проход навсегда
+            if (!isWalkableChar(rows[y][x]) || doors.some((d) => d.x === x && d.y === y)) {
+                return;
+            }
+            setDoors((prev) => [...prev, { id: `door-${x}-${y}`, x, y, lock: null }]);
             return;
         }
         if (tool === 'prop') {
@@ -328,6 +362,7 @@ export default function RoomEdit() {
         setSpawn((prev) => ({ x: Math.min(prev.x, w - 2), y: Math.min(prev.y, h - 2) }));
         setObjects((prev) => prev.filter((o) => o.x < w && o.y < h));
         setPortals((prev) => prev.filter((p) => p.x < w && p.y < h));
+        setDoors((prev) => prev.filter((d) => d.x < w && d.y < h));
         setProps((prev) =>
             prev.filter((p) => {
                 const spec = propSpec(propTypes, p.type);
@@ -340,7 +375,7 @@ export default function RoomEdit() {
     const save = () => {
         setSaving(true);
         setErrors([]);
-        const map: MapData = { rows, spawn, zones: room.map.zones, objects, portals, props };
+        const map: MapData = { rows, spawn, zones: room.map.zones, objects, portals, props, doors };
         router.put(
             `/rooms/${room.slug}`,
             { name, map: map as unknown as Record<string, never> },
@@ -451,6 +486,10 @@ export default function RoomEdit() {
                                 <Armchair className="size-3.5" />
                                 Предмет
                             </Button>
+                            <Button size="sm" variant={tool === 'door' ? 'default' : 'outline'} onClick={() => setTool('door')}>
+                                <DoorOpen className="size-3.5" />
+                                Дверь
+                            </Button>
                             <Button size="sm" variant={tool === 'pan' ? 'default' : 'outline'} onClick={() => setTool('pan')}>
                                 <Hand className="size-3.5" />
                             </Button>
@@ -488,6 +527,65 @@ export default function RoomEdit() {
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    <div className="border-sidebar-border/70 dark:border-sidebar-border rounded-xl border p-4">
+                        <div className="mb-2 flex items-center">
+                            <h3 className="text-sm font-semibold">Двери 🚪</h3>
+                            <span className="text-muted-foreground ml-auto text-xs">{doors.length} шт.</span>
+                        </div>
+                        <p className="text-muted-foreground mb-2 text-xs">
+                            Инструмент «Дверь» ставит её на проходимую клетку — обычно в проём стены. Закрытая дверь не пропускает и прячет
+                            всё, до чего без неё не добраться. Замок можно повернуть только с той стороны, где он висит.
+                        </p>
+                        {doors.length > 0 && (
+                            <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
+                                {doors.map((d, i) => (
+                                    <div key={d.id} className="flex items-center gap-1.5 text-xs">
+                                        <CoordInput
+                                            label="x"
+                                            value={d.x}
+                                            max={width - 1}
+                                            onChange={(v) => setDoors((prev) => prev.map((o, j) => (j === i ? { ...o, x: v } : o)))}
+                                        />
+                                        <CoordInput
+                                            label="y"
+                                            value={d.y}
+                                            max={height - 1}
+                                            onChange={(v) => setDoors((prev) => prev.map((o, j) => (j === i ? { ...o, y: v } : o)))}
+                                        />
+                                        <Select
+                                            value={d.lock ?? 'none'}
+                                            onValueChange={(v) =>
+                                                setDoors((prev) =>
+                                                    prev.map((o, j) => (j === i ? { ...o, lock: v === 'none' ? null : (v as LockSide) } : o)),
+                                                )
+                                            }
+                                        >
+                                            <SelectTrigger className="h-7 flex-1 text-xs">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">без замка</SelectItem>
+                                                {LOCK_SIDES.map((side) => (
+                                                    <SelectItem key={side} value={side}>
+                                                        замок {LOCK_SIDE_LABEL[side]}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="size-6"
+                                            onClick={() => setDoors((prev) => prev.filter((_, j) => j !== i))}
+                                        >
+                                            <Trash2 className="size-3" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="border-sidebar-border/70 dark:border-sidebar-border rounded-xl border p-4">
