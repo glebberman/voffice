@@ -16,6 +16,13 @@
 /database/*.sqlite-journal
 /database/*.sqlite-wal
 /database/*.sqlite-shm
+# база тестов: phpunit.xml задаёт DB_DATABASE=testing, а это относительный
+# путь — sqlite создаёт файл в корне. Со слешем, иначе шаблон заденет и
+# директорию storage/framework/testing.
+/testing
+/testing-journal
+/testing-wal
+/testing-shm
 /node_modules
 /public/build
 /public/hot
