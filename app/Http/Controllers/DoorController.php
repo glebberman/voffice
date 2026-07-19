@@ -21,7 +21,7 @@ class DoorController extends Controller
 
     public function update(Request $request, Room $room): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'id' => ['required', 'string', 'max:64'],
             'action' => ['required', 'string', 'in:open,close,lock,unlock'],
             // позиция игрока: до двери нужно дотянуться, а замок ещё и с нужной стороны
@@ -29,13 +29,19 @@ class DoorController extends Controller
             'y' => ['required', 'integer', 'min:0'],
         ]);
 
-        $door = $this->findDoor($room, $data['id']);
+        // правила заданы выше, а типы берём аксессорами: validate() отдаёт
+        // массив неизвестных значений, и каждое обращение к полю было бы mixed
+        $action = $request->string('action')->toString();
+        $x = $request->integer('x');
+        $y = $request->integer('y');
+
+        $door = $this->findDoor($room, $request->string('id')->toString());
         if ($door === null) {
             throw ValidationException::withMessages(['id' => 'В этой комнате нет такой двери']);
         }
 
         // дотянуться можно только с соседней клетки — иначе двери дёргали бы через всю карту
-        if (abs($door['x'] - $data['x']) + abs($door['y'] - $data['y']) !== 1) {
+        if (abs($door['x'] - $x) + abs($door['y'] - $y) !== 1) {
             throw ValidationException::withMessages(['id' => 'До двери нужно подойти']);
         }
 
@@ -43,7 +49,7 @@ class DoorController extends Controller
         $closed = (bool) ($state->closed ?? false);
         $locked = (bool) ($state->locked ?? false);
 
-        switch ($data['action']) {
+        switch ($action) {
             case 'open':
                 if ($locked) {
                     throw ValidationException::withMessages(['id' => 'Заперто']);
@@ -57,8 +63,8 @@ class DoorController extends Controller
 
             case 'lock':
             case 'unlock':
-                $this->assertAtLock($door, $data['x'], $data['y']);
-                $locked = $data['action'] === 'lock';
+                $this->assertAtLock($door, $x, $y);
+                $locked = $action === 'lock';
                 // запирают закрытую дверь: иначе получилась бы запертая нараспашку
                 $closed = $locked ? true : $closed;
                 break;

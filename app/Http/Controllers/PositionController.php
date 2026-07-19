@@ -10,16 +10,16 @@ class PositionController extends Controller
 {
     public function update(Request $request): Response
     {
-        $validated = $request->validate([
+        $request->validate([
             'x' => ['required', 'integer', 'min:0', 'max:255'],
             'y' => ['required', 'integer', 'min:0', 'max:255'],
             'room_id' => ['required', 'integer', 'exists:rooms,id'],
         ]);
 
         CurrentUser::of($request)->forceFill([
-            'last_x' => $validated['x'],
-            'last_y' => $validated['y'],
-            'last_room_id' => $validated['room_id'],
+            'last_x' => $request->integer('x'),
+            'last_y' => $request->integer('y'),
+            'last_room_id' => $request->integer('room_id'),
         ])->save();
 
         return response()->noContent();

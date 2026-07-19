@@ -2,13 +2,11 @@ includes:
     - vendor/larastan/larastan/extension.neon
 
 parameters:
-    # Уровень 9 держится без baseline и без ignoreErrors: всё, что находил
+    # Максимальный уровень, без baseline и без ignoreErrors: всё, что находил
     # анализатор, поправлено типами и кодом.
     #
-    # На 10-м остаётся 37 ошибок одного рода — данные из validate() приходят
-    # как mixed, и каждое обращение к полю требует сужения. Это следующий
-    # заход, а не заглушка.
-    level: 9
+    # Что для этого понадобилось — в docs/reference/komandy-okruzhenie.md.
+    level: 10
 
     paths:
         - app

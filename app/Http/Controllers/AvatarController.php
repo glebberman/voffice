@@ -18,7 +18,7 @@ class AvatarController extends Controller
         $body = $request->input('body');
         $bodyConfig = is_string($body) ? ($wardrobe['bodies'][$body] ?? null) : null;
 
-        $validated = $request->validate([
+        $request->validate([
             'body' => ['required', 'string', Rule::in(array_keys($wardrobe['bodies']))],
             'hair' => ['required', 'string', Rule::in($wardrobe['hairs'])],
             'top' => ['required', 'string', Rule::in(array_keys($bodyConfig['tops'] ?? []))],
@@ -27,11 +27,11 @@ class AvatarController extends Controller
         ]);
 
         $avatar = [
-            'body' => $validated['body'],
-            'hair' => $validated['hair'],
-            'top' => $validated['top'],
-            'legs' => $validated['legs'],
-            'tie' => (bool) ($validated['tie'] ?? false),
+            'body' => $request->string('body')->toString(),
+            'hair' => $request->string('hair')->toString(),
+            'top' => $request->string('top')->toString(),
+            'legs' => $request->string('legs')->toString(),
+            'tie' => $request->boolean('tie'),
         ];
 
         CurrentUser::of($request)->forceFill(['avatar' => $avatar])->save();

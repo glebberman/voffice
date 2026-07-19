@@ -36,11 +36,11 @@ class DoorState extends Model
      */
     public static function forRoom(Room $room): array
     {
-        return self::query()
-            ->where('room_id', $room->id)
-            ->get()
-            ->keyBy('door_key')
-            ->map(fn (self $s) => ['closed' => $s->closed, 'locked' => $s->locked])
-            ->all();
+        $states = [];
+        foreach (self::query()->where('room_id', $room->id)->get() as $state) {
+            $states[$state->door_key] = ['closed' => $state->closed, 'locked' => $state->locked];
+        }
+
+        return $states;
     }
 }

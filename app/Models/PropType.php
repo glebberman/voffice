@@ -34,11 +34,11 @@ class PropType extends Model
      */
     public static function catalogue(): array
     {
-        return self::query()
-            ->orderBy('id')
-            ->get()
-            ->keyBy('slug')
-            ->map(fn (self $type) => [
+        // обычный цикл, а не keyBy()->map(): коллекция теряет форму значения,
+        // и на выходе снова получается mixed
+        $catalogue = [];
+        foreach (self::query()->orderBy('id')->get() as $type) {
+            $catalogue[$type->slug] = [
                 'label' => $type->label,
                 'sheet' => $type->sheet,
                 'sx' => $type->sx,
@@ -46,7 +46,9 @@ class PropType extends Model
                 'w' => $type->w,
                 'h' => $type->h,
                 'tall' => $type->tall,
-            ])
-            ->all();
+            ];
+        }
+
+        return $catalogue;
     }
 }

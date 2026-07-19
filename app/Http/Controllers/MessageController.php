@@ -11,14 +11,14 @@ class MessageController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
+        $request->validate([
             'body' => ['required', 'string', 'max:500'],
             'room_id' => ['required', 'integer', 'exists:rooms,id'],
         ]);
 
         $message = CurrentUser::of($request)->messages()->create([
-            'room_id' => $validated['room_id'],
-            'body' => $validated['body'],
+            'room_id' => $request->integer('room_id'),
+            'body' => $request->string('body')->toString(),
         ]);
 
         broadcast(new MessageSent($message))->toOthers();
