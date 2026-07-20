@@ -70,9 +70,9 @@ class ExportResourcesTest extends TestCase
     {
         // ровно тот случай, ради которого команда и заведена: предмет завели
         // через страницу каталога, в файл он не попал и исчез бы при db:seed
-        PropType::create([
-            'slug' => 'whiteboard',
-            'label' => 'Маркерная доска',
+        $type = PropType::create(['slug' => 'whiteboard', 'label' => 'Маркерная доска']);
+        $type->orientations()->create([
+            'dir' => 'south',
             'sheet' => 'office/Desk, Ornate.png',
             'sx' => 0, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 1,
         ]);
@@ -82,7 +82,12 @@ class ExportResourcesTest extends TestCase
         $items = $this->nested(JsonFile::read($this->to.'/props.json'), 'items');
         $this->assertArrayHasKey('whiteboard', $items);
         $this->assertSame(
-            ['label' => 'Маркерная доска', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 1],
+            [
+                'label' => 'Маркерная доска',
+                'orientations' => [
+                    'south' => ['sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 1],
+                ],
+            ],
             $items['whiteboard'],
         );
     }
@@ -102,10 +107,8 @@ class ExportResourcesTest extends TestCase
 
     public function test_check_reports_drift_and_writes_nothing(): void
     {
-        PropType::create([
-            'slug' => 'plant-pot', 'label' => 'Кашпо', 'sheet' => 'office/Bins.png',
-            'sx' => 0, 'sy' => 0, 'w' => 1, 'h' => 1, 'tall' => 0,
-        ]);
+        PropType::create(['slug' => 'plant-pot', 'label' => 'Кашпо'])
+            ->orientations()->create(['dir' => 'south', 'sheet' => 'office/Bins.png', 'sx' => 0, 'sy' => 0, 'w' => 1, 'h' => 1, 'tall' => 0]);
 
         $this->export(['--check' => true])->assertFailed();
 

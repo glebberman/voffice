@@ -89,15 +89,21 @@ class ExportResources extends Command
         $existing = is_file($source) ? JsonFile::read($source) : [];
 
         $items = [];
-        foreach (PropType::query()->orderBy('id')->get() as $type) {
+        foreach (PropType::query()->with('orientations')->orderBy('id')->get() as $type) {
+            $orientations = [];
+            foreach ($type->sortedOrientations() as $orientation) {
+                $orientations[$orientation->dir] = [
+                    'sheet' => $orientation->sheet,
+                    'sx' => $orientation->sx,
+                    'sy' => $orientation->sy,
+                    'w' => $orientation->w,
+                    'h' => $orientation->h,
+                    'tall' => $orientation->tall,
+                ];
+            }
             $items[$type->slug] = [
                 'label' => $type->label,
-                'sheet' => $type->sheet,
-                'sx' => $type->sx,
-                'sy' => $type->sy,
-                'w' => $type->w,
-                'h' => $type->h,
-                'tall' => $type->tall,
+                'orientations' => $orientations,
             ];
         }
 

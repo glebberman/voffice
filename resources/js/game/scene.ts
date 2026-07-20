@@ -3,7 +3,7 @@ import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } 
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { cutoutPolygon, GHOST_ALPHA, SPRITE_TOP } from './cutout';
 import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type MapObjectType } from './map';
-import { propBaseRect, propSheetUrl, propSpec, propTallRect } from './props';
+import { propBaseRect, propOrientation, propSheetUrl, propSpec, propTallRect } from './props';
 import type { Direction, PlayerState, PlayerStatus } from './types';
 
 function sameRange(a: ChunkRange, b: ChunkRange): boolean {
@@ -236,11 +236,12 @@ export class OfficeScene {
     private drawProps(): void {
         for (const prop of this.map.props) {
             const spec = propSpec(this.map.catalogue, prop.type);
-            if (!spec) {
+            const orientation = spec ? propOrientation(spec, prop.dir) : null;
+            if (!orientation) {
                 continue;
             }
 
-            const url = propSheetUrl(spec);
+            const url = propSheetUrl(orientation);
             Assets.load(url)
                 .then((texture: Texture) => {
                     if (this.destroyed) {
@@ -248,29 +249,29 @@ export class OfficeScene {
                     }
                     texture.source.scaleMode = 'nearest';
 
-                    const base = propBaseRect(spec);
+                    const base = propBaseRect(orientation);
                     const baseSprite = new Sprite(
                         new Texture({ source: texture.source, frame: new Rectangle(base.x, base.y, base.width, base.height) }),
                     );
                     baseSprite.position.set(prop.x * TILE, prop.y * TILE);
                     this.propBaseLayer.addChild(baseSprite);
 
-                    const tall = propTallRect(spec);
+                    const tall = propTallRect(orientation);
                     if (!tall) {
                         return;
                     }
                     const tallTexture = new Texture({ source: texture.source, frame: new Rectangle(tall.x, tall.y, tall.width, tall.height) });
                     const [node, ghost] = [this.overheadLayer, this.overheadGhost].map((layer) => {
                         const sprite = new Sprite(tallTexture);
-                        sprite.position.set(prop.x * TILE, (prop.y - spec.tall) * TILE);
+                        sprite.position.set(prop.x * TILE, (prop.y - orientation.tall) * TILE);
                         layer.addChild(sprite);
                         return sprite;
                     });
 
                     // клетки, которые эта часть закрывает собой
                     const tiles = new Set<number>();
-                    for (let dy = 1; dy <= spec.tall; dy++) {
-                        for (let dx = 0; dx < spec.w; dx++) {
+                    for (let dy = 1; dy <= orientation.tall; dy++) {
+                        for (let dx = 0; dx < orientation.w; dx++) {
                             tiles.add((prop.y - dy) * this.map.width + prop.x + dx);
                         }
                     }

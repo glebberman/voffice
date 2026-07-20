@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\PropOrientation;
 use App\Models\PropType;
 use App\Models\Room;
 use App\Models\User;
@@ -27,20 +28,32 @@ class PropTypeTest extends TestCase
 
     /**
      * @param  array<string, mixed>  $overrides
+     * @param  array<string, mixed>  $orientationOverrides
      * @return array<string, mixed>
      */
-    private function validType(array $overrides = []): array
+    private function validType(array $overrides = [], array $orientationOverrides = []): array
     {
         return array_merge([
             'slug' => 'bookshelf',
             'label' => 'Стеллаж',
-            'sheet' => 'office/Desk, Ornate.png',
-            'sx' => 96,
-            'sy' => 0,
-            'w' => 2,
-            'h' => 1,
-            'tall' => 2,
+            'orientations' => [
+                array_merge([
+                    'dir' => 'south',
+                    'sheet' => 'office/Desk, Ornate.png',
+                    'sx' => 96,
+                    'sy' => 0,
+                    'w' => 2,
+                    'h' => 1,
+                    'tall' => 2,
+                ], $orientationOverrides),
+            ],
         ], $overrides);
+    }
+
+    /** Ориентация south — дефолтная, в тестах ниже интересна именно она. */
+    private function south(PropType $type): PropOrientation
+    {
+        return $type->orientations()->where('dir', 'south')->firstOrFail();
     }
 
     public function test_seeder_fills_catalogue_from_json(): void
@@ -48,7 +61,9 @@ class PropTypeTest extends TestCase
         $file = $this->nested(JsonFile::read(resource_path('props.json')), 'items');
 
         $this->assertSame(count($file), PropType::count());
-        $this->assertSame($this->nested($file, 'cabinet')['tall'], PropType::where('slug', 'cabinet')->value('tall'));
+
+        $cabinet = $this->nested($this->nested($this->nested($file, 'cabinet'), 'orientations'), 'south');
+        $this->assertSame($cabinet['tall'], $this->south(PropType::where('slug', 'cabinet')->firstOrFail())->tall);
     }
 
     public function test_admin_flag_reaches_the_frontend(): void
@@ -95,7 +110,7 @@ class PropTypeTest extends TestCase
         $this->actingAs($admin)->post('/props', $this->validType())->assertRedirect('/props');
 
         $created = PropType::where('slug', 'bookshelf')->firstOrFail();
-        $this->assertSame(2, $created->tall);
+        $this->assertSame(2, $this->south($created)->tall);
 
         // новый тип сразу принимается валидацией карты
         $map = [
@@ -115,8 +130,8 @@ class PropTypeTest extends TestCase
 
         // «Desk, Ornate.png» — 160×128 px, значит регион 2×3 тайла с sy=64 не влезет
         $this->actingAs($admin)
-            ->post('/props', $this->validType(['sy' => 64]))
-            ->assertSessionHasErrors('sheet');
+            ->post('/props', $this->validType([], ['sy' => 64]))
+            ->assertSessionHasErrors('orientations.0.sheet');
 
         $this->assertDatabaseMissing('prop_types', ['slug' => 'bookshelf']);
     }
@@ -124,8 +139,8 @@ class PropTypeTest extends TestCase
     public function test_sheet_must_come_from_the_assets_folder(): void
     {
         $this->actingAs(User::factory()->admin()->create())
-            ->post('/props', $this->validType(['sheet' => '../../../.env']))
-            ->assertSessionHasErrors('sheet');
+            ->post('/props', $this->validType([], ['sheet' => '../../../.env']))
+            ->assertSessionHasErrors('orientations.0.sheet');
     }
 
     public function test_slug_is_unique_and_url_safe(): void
@@ -139,8 +154,8 @@ class PropTypeTest extends TestCase
     public function test_region_must_be_aligned_to_the_tile_grid(): void
     {
         $this->actingAs(User::factory()->admin()->create())
-            ->post('/props', $this->validType(['sx' => 100]))
-            ->assertSessionHasErrors('sx');
+            ->post('/props', $this->validType([], ['sx' => 100]))
+            ->assertSessionHasErrors('orientations.0.sx');
     }
 
     public function test_used_type_cannot_be_deleted_but_unused_can(): void
@@ -166,14 +181,56 @@ class PropTypeTest extends TestCase
 
         // делаем шкаф целиком основанием: то, что висело в воздухе, станет стеной
         $this->actingAs($admin)
-            ->put("/props/{$cabinet->id}", $this->validType(['slug' => 'cabinet', 'label' => 'Шкаф', 'h' => 3, 'tall' => 0]))
+            ->put("/props/{$cabinet->id}", $this->validType(['slug' => 'cabinet', 'label' => 'Шкаф'], ['h' => 3, 'tall' => 0]))
             ->assertRedirect('/props');
 
-        $this->assertSame(3, $cabinet->refresh()->h);
+        $this->assertSame(3, $this->south($cabinet)->h);
 
         // карта не менялась, но её предметы теперь занимают больше клеток
         $office = Room::where('slug', 'office')->firstOrFail();
         $this->assertNotEmpty(array_filter(($office->map['props'] ?? []), fn ($p) => $p['type'] === 'cabinet'));
+    }
+
+    public function test_orientations_come_as_a_complete_set(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // тип с двумя сторонами: у повёрнутого свой регион и свой footprint
+        $payload = $this->validType(['orientations' => [
+            ['dir' => 'south', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 96, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 2],
+            ['dir' => 'east', 'sheet' => 'office/Card Table.png', 'sx' => 96, 'sy' => 0, 'w' => 1, 'h' => 2, 'tall' => 0],
+        ]]);
+        $this->actingAs($admin)->post('/props', $payload)->assertRedirect('/props');
+
+        $type = PropType::where('slug', 'bookshelf')->firstOrFail();
+        $dirs = fn (): array => array_map(fn (PropOrientation $o): string => $o->dir, $type->refresh()->sortedOrientations());
+        $this->assertSame(['south', 'east'], $dirs());
+
+        // ориентации приходят полным набором: пропавшая из запроса удаляется
+        $this->actingAs($admin)->put("/props/{$type->id}", $this->validType())->assertRedirect('/props');
+        $this->assertSame(['south'], $dirs());
+    }
+
+    public function test_map_accepts_existing_direction_and_rejects_missing_one(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $mapWith = fn (array $prop): array => [
+            'rows' => ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'],
+            'spawn' => ['x' => 3, 'y' => 4],
+            'zones' => [],
+            'objects' => [],
+            'portals' => [],
+            'props' => [$prop],
+        ];
+
+        // у шкафа из каталога есть только south
+        $this->actingAs($admin)
+            ->put('/rooms/office', ['name' => 'Офис', 'map' => $mapWith(['id' => 'c', 'type' => 'cabinet', 'x' => 1, 'y' => 3, 'dir' => 'south'])])
+            ->assertRedirect();
+
+        $this->actingAs($admin)
+            ->put('/rooms/office', ['name' => 'Офис', 'map' => $mapWith(['id' => 'c', 'type' => 'cabinet', 'x' => 1, 'y' => 3, 'dir' => 'east'])])
+            ->assertSessionHasErrors('map.props.0.dir');
     }
 
     public function test_map_rejects_type_missing_from_catalogue(): void

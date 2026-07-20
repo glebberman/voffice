@@ -23,14 +23,22 @@ class PropTypeSeeder extends Seeder
         }
 
         foreach ($catalogue as $slug => $spec) {
-            if (! is_array($spec)) {
-                throw new RuntimeException("props.json: предмет {$slug} — не объект");
+            if (! is_array($spec) || ! is_string($spec['label'] ?? null) || ! is_array($spec['orientations'] ?? null)) {
+                throw new RuntimeException("props.json: у предмета {$slug} нет label или orientations");
             }
-            $fields = [];
-            foreach ($spec as $field => $value) {
-                $fields[(string) $field] = $value;
+
+            $type = PropType::updateOrCreate(['slug' => (string) $slug], ['label' => $spec['label']]);
+
+            foreach ($spec['orientations'] as $dir => $orientation) {
+                if (! is_array($orientation)) {
+                    throw new RuntimeException("props.json: ориентация {$slug}.{$dir} — не объект");
+                }
+                $fields = [];
+                foreach ($orientation as $field => $value) {
+                    $fields[(string) $field] = $value;
+                }
+                $type->orientations()->updateOrCreate(['dir' => (string) $dir], $fields);
             }
-            PropType::updateOrCreate(['slug' => (string) $slug], $fields);
         }
     }
 }

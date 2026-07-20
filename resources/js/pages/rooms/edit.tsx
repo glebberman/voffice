@@ -18,7 +18,7 @@ import {
     type PortalData,
     type PropData,
 } from '@/game/map';
-import { propFits, propSheetUrl, propSpec, type PropCatalogue } from '@/game/props';
+import { propFits, propOrientation, propSheetUrl, propSpec, type PropCatalogue } from '@/game/props';
 import { TILE_COLOR, TILE_LABEL } from '@/game/tile-colors';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
@@ -104,17 +104,16 @@ export default function RoomEdit() {
     // спрайтшиты предметов грузим один раз; sheetsReady будит перерисовку
     useEffect(() => {
         for (const spec of Object.values(propTypes)) {
-            if (!spec) {
-                continue;
+            for (const orientation of Object.values(spec?.orientations ?? {})) {
+                const url = propSheetUrl(orientation);
+                if (sheetsRef.current.has(url)) {
+                    continue;
+                }
+                const img = new Image();
+                img.onload = () => setSheetsReady((n) => n + 1);
+                img.src = url;
+                sheetsRef.current.set(url, img);
             }
-            const url = propSheetUrl(spec);
-            if (sheetsRef.current.has(url)) {
-                continue;
-            }
-            const img = new Image();
-            img.onload = () => setSheetsReady((n) => n + 1);
-            img.src = url;
-            sheetsRef.current.set(url, img);
         }
     }, [propTypes]);
 
@@ -182,16 +181,17 @@ export default function RoomEdit() {
         ctx.imageSmoothingEnabled = false;
         for (const prop of props) {
             const spec = propSpec(propTypes, prop.type);
-            if (!spec) {
+            const orientation = spec ? propOrientation(spec, prop.dir) : null;
+            if (!orientation) {
                 continue;
             }
-            const img = sheetsRef.current.get(propSheetUrl(spec));
+            const img = sheetsRef.current.get(propSheetUrl(orientation));
             const dx = prop.x * cell - pan.x;
-            const dy = (prop.y - spec.tall) * cell - pan.y;
-            const dw = spec.w * cell;
-            const dh = (spec.h + spec.tall) * cell;
+            const dy = (prop.y - orientation.tall) * cell - pan.y;
+            const dw = orientation.w * cell;
+            const dh = (orientation.h + orientation.tall) * cell;
             if (img?.complete && img.naturalWidth > 0) {
-                ctx.drawImage(img, spec.sx, spec.sy, spec.w * 32, (spec.h + spec.tall) * 32, dx, dy, dw, dh);
+                ctx.drawImage(img, orientation.sx, orientation.sy, orientation.w * 32, (orientation.h + orientation.tall) * 32, dx, dy, dw, dh);
             } else {
                 ctx.fillStyle = 'rgba(124, 111, 174, 0.6)';
                 ctx.fillRect(dx, dy, dw, dh);
@@ -199,7 +199,7 @@ export default function RoomEdit() {
             // основание (то, что блокирует проход) подсвечиваем рамкой
             ctx.strokeStyle = 'rgba(43, 39, 51, 0.45)';
             ctx.lineWidth = 1;
-            ctx.strokeRect(prop.x * cell - pan.x + 0.5, prop.y * cell - pan.y + 0.5, spec.w * cell - 1, spec.h * cell - 1);
+            ctx.strokeRect(prop.x * cell - pan.x + 0.5, prop.y * cell - pan.y + 0.5, orientation.w * cell - 1, orientation.h * cell - 1);
         }
 
         // двери: рамка на клетке, а точка показывает сторону, где висит замок
@@ -271,7 +271,9 @@ export default function RoomEdit() {
         }
         if (tool === 'prop') {
             const spec = propSpec(propTypes, propType);
-            if (!spec || !propFits(spec, x, y, width, height)) {
+            // расстановка пока всегда стороной по умолчанию (south)
+            const orientation = spec ? propOrientation(spec) : null;
+            if (!orientation || !propFits(orientation, x, y, width, height)) {
                 return; // не помещается — основание или часть в воздухе вылезут за карту
             }
             setProps((prev) => [...prev, { id: `${propType}-${Date.now()}`, type: propType, x, y }]);
@@ -369,7 +371,8 @@ export default function RoomEdit() {
         setProps((prev) =>
             prev.filter((p) => {
                 const spec = propSpec(propTypes, p.type);
-                return spec ? propFits(spec, p.x, p.y, w, h) : false;
+                const orientation = spec ? propOrientation(spec, p.dir) : null;
+                return orientation ? propFits(orientation, p.x, p.y, w, h) : false;
             }),
         );
         setSizeDraft({ w, h });
@@ -605,7 +608,8 @@ export default function RoomEdit() {
                         <div className="grid grid-cols-2 gap-1.5">
                             {propKeys.map((type) => {
                                 const spec = propTypes[type];
-                                if (!spec) {
+                                const orientation = spec ? propOrientation(spec) : null;
+                                if (!spec || !orientation) {
                                     return null;
                                 }
 
@@ -623,8 +627,8 @@ export default function RoomEdit() {
                                     >
                                         <span className="block truncate">{spec.label}</span>
                                         <span className="text-muted-foreground">
-                                            {spec.w}×{spec.h}
-                                            {spec.tall > 0 ? ` · воздух +${spec.tall}` : ''}
+                                            {orientation.w}×{orientation.h}
+                                            {orientation.tall > 0 ? ` · воздух +${orientation.tall}` : ''}
                                         </span>
                                     </button>
                                 );

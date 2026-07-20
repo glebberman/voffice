@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { propSheetUrl, type PropSpec } from '@/game/props';
+import { propSheetUrl, type PropDir, type PropOrientation } from '@/game/props';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
@@ -12,9 +12,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const TILE = 32;
 const ZOOM = 3; // лист мелкий, без увеличения по нему не попасть мышью
 
-interface PropTypeRow extends PropSpec {
+interface OrientationRow extends PropOrientation {
+    dir: PropDir;
+}
+
+interface PropTypeRow {
     id: number;
     slug: string;
+    label: string;
+    orientations: OrientationRow[];
 }
 
 interface PropsPageProps extends SharedData {
@@ -24,9 +30,12 @@ interface PropsPageProps extends SharedData {
     errors: Record<string, string>;
 }
 
+// Пока страница правит одну ориентацию (первую); вкладки сторон приедут
+// отдельной задачей. dir сохраняем, чтобы не переименовать чужую сторону.
 interface Draft {
     slug: string;
     label: string;
+    dir: PropDir;
     sheet: string;
     sx: number;
     sy: number;
@@ -35,23 +44,28 @@ interface Draft {
     tall: number;
 }
 
-const emptyDraft = (sheet: string): Draft => ({ slug: '', label: '', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 });
+const emptyDraft = (sheet: string): Draft => ({ slug: '', label: '', dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 });
 
-const draftOf = (type: PropTypeRow): Draft => ({
-    slug: type.slug,
-    label: type.label,
-    sheet: type.sheet,
-    sx: type.sx,
-    sy: type.sy,
-    w: type.w,
-    h: type.h,
-    tall: type.tall,
-});
+const draftOf = (type: PropTypeRow): Draft => {
+    const first = type.orientations.at(0);
+
+    return {
+        slug: type.slug,
+        label: type.label,
+        dir: first?.dir ?? 'south',
+        sheet: first?.sheet ?? '',
+        sx: first?.sx ?? 0,
+        sy: first?.sy ?? 0,
+        w: first?.w ?? 1,
+        h: first?.h ?? 1,
+        tall: first?.tall ?? 0,
+    };
+};
 
 /** Превью предмета прямо из листа спрайтов — без канваса, одним div-ом. */
-function PropPreview({ spec, fit }: { spec: PropSpec; fit?: number }) {
-    const width = spec.w * TILE;
-    const height = (spec.h + spec.tall) * TILE;
+function PropPreview({ orientation, fit }: { orientation: PropOrientation; fit?: number }) {
+    const width = orientation.w * TILE;
+    const height = (orientation.h + orientation.tall) * TILE;
     // fit — сторона квадрата, в который нужно вписать: список ужимает крупные
     // предметы, а карточка правки показывает их в натуральную величину
     const scale = fit ? Math.min(1, fit / Math.max(width, height)) : 1;
@@ -62,8 +76,8 @@ function PropPreview({ spec, fit }: { spec: PropSpec; fit?: number }) {
                 style={{
                     width,
                     height,
-                    backgroundImage: `url("${propSheetUrl(spec)}")`,
-                    backgroundPosition: `-${spec.sx}px -${spec.sy}px`,
+                    backgroundImage: `url("${propSheetUrl(orientation)}")`,
+                    backgroundPosition: `-${orientation.sx}px -${orientation.sy}px`,
                     imageRendering: 'pixelated',
                     transform: `scale(${scale})`,
                     transformOrigin: 'top left',
@@ -267,10 +281,16 @@ export default function PropsCatalogue() {
     };
 
     const submit = () => {
+        // сервер ждёт полный набор ориентаций; страница правит одну
+        const payload = {
+            slug: draft.slug,
+            label: draft.label,
+            orientations: [{ dir: draft.dir, sheet: draft.sheet, sx: draft.sx, sy: draft.sy, w: draft.w, h: draft.h, tall: draft.tall }],
+        };
         if (selectedId === null) {
-            router.post('/props', { ...draft }, { preserveScroll: true });
+            router.post('/props', payload, { preserveScroll: true });
         } else {
-            router.put(`/props/${selectedId}`, { ...draft }, { preserveScroll: true });
+            router.put(`/props/${selectedId}`, payload, { preserveScroll: true });
         }
     };
 
@@ -346,7 +366,7 @@ export default function PropsCatalogue() {
 
                         <div className="flex items-start gap-3">
                             <div className="border-sidebar-border/70 dark:border-sidebar-border flex items-center justify-center rounded-md border p-2">
-                                {draft.sheet && <PropPreview spec={draft} fit={96} />}
+                                {draft.sheet && <PropPreview orientation={draft} fit={96} />}
                             </div>
                             <div className="flex-1 space-y-2">
                                 <div>
@@ -388,38 +408,43 @@ export default function PropsCatalogue() {
                             <span className="text-muted-foreground ml-auto text-xs">{types.length} шт.</span>
                         </div>
                         <div className="flex max-h-[420px] flex-col gap-1 overflow-y-auto">
-                            {types.map((type) => (
-                                <div
-                                    key={type.id}
-                                    className={`flex items-center gap-2 rounded-md border p-1.5 text-xs ${
-                                        type.id === selectedId ? 'ring-primary ring-2' : ''
-                                    }`}
-                                >
-                                    <button type="button" className="flex flex-1 items-center gap-2 text-left" onClick={() => select(type)}>
-                                        <div className="flex size-10 shrink-0 items-center justify-center">
-                                            <PropPreview spec={type} fit={40} />
-                                        </div>
-                                        <span className="min-w-0">
-                                            <span className="block truncate">{type.label}</span>
-                                            <span className="text-muted-foreground">
-                                                {type.w}×{type.h}
-                                                {type.tall > 0 ? ` · воздух +${type.tall}` : ''}
-                                                {usage[type.slug] ? ` · на картах ${usage[type.slug]}` : ''}
-                                            </span>
-                                        </span>
-                                    </button>
-                                    <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        className="size-6"
-                                        title={usage[type.slug] ? 'Используется на картах' : 'Удалить'}
-                                        disabled={!!usage[type.slug]}
-                                        onClick={() => remove(type)}
+                            {types.map((type) => {
+                                const first = type.orientations.at(0);
+
+                                return (
+                                    <div
+                                        key={type.id}
+                                        className={`flex items-center gap-2 rounded-md border p-1.5 text-xs ${
+                                            type.id === selectedId ? 'ring-primary ring-2' : ''
+                                        }`}
                                     >
-                                        <Trash2 className="size-3" />
-                                    </Button>
-                                </div>
-                            ))}
+                                        <button type="button" className="flex flex-1 items-center gap-2 text-left" onClick={() => select(type)}>
+                                            <div className="flex size-10 shrink-0 items-center justify-center">
+                                                {first && <PropPreview orientation={first} fit={40} />}
+                                            </div>
+                                            <span className="min-w-0">
+                                                <span className="block truncate">{type.label}</span>
+                                                <span className="text-muted-foreground">
+                                                    {first ? `${first.w}×${first.h}` : '—'}
+                                                    {first && first.tall > 0 ? ` · воздух +${first.tall}` : ''}
+                                                    {type.orientations.length > 1 ? ` · сторон: ${type.orientations.length}` : ''}
+                                                    {usage[type.slug] ? ` · на картах ${usage[type.slug]}` : ''}
+                                                </span>
+                                            </span>
+                                        </button>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="size-6"
+                                            title={usage[type.slug] ? 'Используется на картах' : 'Удалить'}
+                                            disabled={!!usage[type.slug]}
+                                            onClick={() => remove(type)}
+                                        >
+                                            <Trash2 className="size-3" />
+                                        </Button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

@@ -2,11 +2,16 @@
 
 namespace App\Http\Requests;
 
+use App\Models\PropOrientation;
 use App\Models\PropType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
+/**
+ * @phpstan-import-type OrientationSpec from PropType
+ * @phpstan-import-type PropSpec from PropType
+ */
 class MapUpdateRequest extends FormRequest
 {
     private const WALKABLE = ['.', ':', ',', ';', '*'];
@@ -19,18 +24,32 @@ class MapUpdateRequest extends FormRequest
     /**
      * Кеш на время запроса: каталог читается дважды.
      *
-     * @var array<string, array{label: string, sheet: string, sx: int, sy: int, w: int, h: int, tall: int}>|null
+     * @var array<string, PropSpec>|null
      */
     private ?array $catalogue = null;
 
     /**
      * Каталог предметов — тот же, что уезжает клиенту (game/props.ts).
      *
-     * @return array<string, array{label: string, sheet: string, sx: int, sy: int, w: int, h: int, tall: int}>
+     * @return array<string, PropSpec>
      */
     private function propCatalogue(): array
     {
         return $this->catalogue ??= PropType::catalogue();
+    }
+
+    /**
+     * Ориентация предмета с тем же фолбэком, что у клиента
+     * (game/props.ts, propOrientation): dir → south → первая попавшаяся.
+     *
+     * @param  PropSpec  $spec
+     * @return OrientationSpec|null
+     */
+    private static function orientationOf(array $spec, ?string $dir): ?array
+    {
+        $orientations = $spec['orientations'];
+
+        return $orientations[$dir ?? 'south'] ?? $orientations['south'] ?? (reset($orientations) ?: null);
     }
 
     /**
@@ -121,6 +140,8 @@ class MapUpdateRequest extends FormRequest
             'map.props.*.type' => ['required', 'string', Rule::in(array_keys($this->propCatalogue()))],
             'map.props.*.x' => ['required', 'integer', 'min:0'],
             'map.props.*.y' => ['required', 'integer', 'min:0'],
+            // сторона, которой стоит предмет; отсутствие означает south
+            'map.props.*.dir' => ['sometimes', 'string', Rule::in(PropOrientation::DIRS)],
             // двери: стоят на проходимом тайле, замок — на одной из сторон
             'map.doors' => ['sometimes', 'array', 'max:500'],
             'map.doors.*.id' => ['required', 'string', 'max:64'],
@@ -206,10 +227,21 @@ class MapUpdateRequest extends FormRequest
                     if ($spec === null) {
                         continue; // недопустимый тип уже поймали правила выше
                     }
+                    $dirRaw = $prop['dir'] ?? null;
+                    $dir = is_string($dirRaw) ? $dirRaw : null;
+                    if ($dir !== null && ! isset($spec['orientations'][$dir])) {
+                        $validator->errors()->add("map.props.{$i}.dir", 'У предмета нет такой ориентации');
+
+                        continue;
+                    }
+                    $orientation = self::orientationOf($spec, $dir);
+                    if ($orientation === null) {
+                        continue; // тип без ориентаций каталог не отдаёт
+                    }
                     [$x, $y] = self::pointOf($prop);
-                    if (! $inBounds($x, $y) || ! $inBounds($x + $spec['w'] - 1, $y + $spec['h'] - 1)) {
+                    if (! $inBounds($x, $y) || ! $inBounds($x + $orientation['w'] - 1, $y + $orientation['h'] - 1)) {
                         $validator->errors()->add("map.props.{$i}", 'Предмет за пределами карты');
-                    } elseif ($y - $spec['tall'] < 0) {
+                    } elseif ($y - $orientation['tall'] < 0) {
                         $validator->errors()->add("map.props.{$i}", 'Высокой части предмета не хватает места сверху');
                     }
                 }

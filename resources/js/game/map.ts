@@ -1,4 +1,4 @@
-import type { PropCatalogue } from './props';
+import { propOrientation, type PropCatalogue, type PropDir, type PropOrientation } from './props';
 
 // Карта комнаты приезжает с сервера (rooms.map, исходники в resources/maps/*.json).
 // Каждый символ — тайл 32×32:
@@ -50,13 +50,15 @@ export interface PortalData {
  * Предмет обстановки: занимает прямоугольник клеток (основание блокирует
  * проход), а его спрайт может быть выше основания — за высокой частью
  * персонаж проходит, и она рисуется поверх него. Размеры берутся из
- * каталога по `type`, поэтому в карте хранится только тип и позиция.
+ * каталога по `type` и стороне `dir`, поэтому в карте хранится только тип,
+ * позиция и поворот.
  */
 export interface PropData {
     id: string;
     type: string;
     x: number; // левый верхний тайл ОСНОВАНИЯ
     y: number;
+    dir?: PropDir; // сторона, которой стоит предмет; отсутствие означает south
 }
 
 /** Сторона двери: с неё запирают и отпирают. */
@@ -236,16 +238,22 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
         return rows[y][x];
     };
 
+    // ориентация предмета: спека по типу, затем сторона с фолбэком на south
+    const orientationFor = (prop: PropData): PropOrientation | null => {
+        const spec = catalogue[prop.type];
+        return spec ? propOrientation(spec, prop.dir) : null;
+    };
+
     // клетки, занятые основаниями предметов (высокая часть остаётся проходимой)
     const props = data.props ?? [];
     const blocked = new Set<number>();
     for (const prop of props) {
-        const spec = catalogue[prop.type];
-        if (!spec) {
+        const orientation = orientationFor(prop);
+        if (!orientation) {
             continue;
         }
-        for (let dy = 0; dy < spec.h; dy++) {
-            for (let dx = 0; dx < spec.w; dx++) {
+        for (let dy = 0; dy < orientation.h; dy++) {
+            for (let dx = 0; dx < orientation.w; dx++) {
                 blocked.add((prop.y + dy) * width + prop.x + dx);
             }
         }
@@ -345,12 +353,12 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
     // скрыт — только тогда и нужен овал прозрачности.
     const overhead = new Set<number>();
     for (const prop of props) {
-        const spec = catalogue[prop.type];
-        if (!spec) {
+        const orientation = orientationFor(prop);
+        if (!orientation) {
             continue;
         }
-        for (let dy = 1; dy <= spec.tall; dy++) {
-            for (let dx = 0; dx < spec.w; dx++) {
+        for (let dy = 1; dy <= orientation.tall; dy++) {
+            for (let dx = 0; dx < orientation.w; dx++) {
                 overhead.add((prop.y - dy) * width + prop.x + dx);
             }
         }

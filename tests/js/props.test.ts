@@ -1,5 +1,16 @@
 import { makeMap, type MapData } from '@/game/map';
-import { propBaseRect, propFits, propFootprint, propSpec, propTallRect, type PropCatalogue, type PropSpec } from '@/game/props';
+import {
+    propBaseRect,
+    propDirs,
+    propFits,
+    propFootprint,
+    propOrientation,
+    propSpec,
+    propTallRect,
+    type PropCatalogue,
+    type PropOrientation,
+    type PropSpec,
+} from '@/game/props';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -22,6 +33,16 @@ const spec = (type: string): PropSpec => {
     return found;
 };
 
+/** Ориентация по умолчанию: у каждого предмета каталога она обязана быть. */
+const orient = (type: string): PropOrientation => {
+    const found = propOrientation(spec(type));
+    if (!found) {
+        throw new Error(`у предмета ${type} нет ни одной ориентации`);
+    }
+
+    return found;
+};
+
 // карта 8×8: пол внутри, стена по периметру
 const baseMap = (props: MapData['props']): MapData => ({
     rows: ['########', '#......#', '#......#', '#......#', '#......#', '#......#', '#......#', '########'],
@@ -33,18 +54,24 @@ const baseMap = (props: MapData['props']): MapData => ({
 });
 
 describe('каталог предметов', () => {
-    it('спрайт каждого предмета есть на диске', () => {
-        const missing = PROP_TYPES.filter((type) => !existsSync(`${LPC_DIR}/${spec(type).sheet}`));
+    it('спрайт каждой ориентации есть на диске', () => {
+        const missing = PROP_TYPES.flatMap((type) =>
+            Object.values(spec(type).orientations).filter((o) => !existsSync(`${LPC_DIR}/${o.sheet}`)).map((o) => `${type}: ${o.sheet}`),
+        );
         expect(missing).toEqual([]);
     });
 
-    it('у каждого предмета положительное основание и неотрицательная высота', () => {
+    it('у каждой ориентации положительное основание и неотрицательная высота', () => {
         for (const type of PROP_TYPES) {
             const item = spec(type);
-            expect(item.w, type).toBeGreaterThan(0);
-            expect(item.h, type).toBeGreaterThan(0);
-            expect(item.tall, type).toBeGreaterThanOrEqual(0);
             expect(item.label, type).toBeTruthy();
+            const orientations = Object.values(item.orientations);
+            expect(orientations.length, type).toBeGreaterThan(0);
+            for (const orientation of orientations) {
+                expect(orientation.w, type).toBeGreaterThan(0);
+                expect(orientation.h, type).toBeGreaterThan(0);
+                expect(orientation.tall, type).toBeGreaterThanOrEqual(0);
+            }
         }
     });
 
@@ -53,9 +80,56 @@ describe('каталог предметов', () => {
     });
 });
 
+describe('ориентации', () => {
+    // предмет с двумя сторонами: повёрнутый меняет не только спрайт, но и footprint
+    const twoSided: PropSpec = {
+        label: 'Стол',
+        orientations: {
+            south: { sheet: 'office/Card Table.png', sx: 0, sy: 0, w: 4, h: 1, tall: 1 },
+            east: { sheet: 'office/Card Table.png', sx: 96, sy: 0, w: 1, h: 2, tall: 0 },
+        },
+    };
+
+    it('явная сторона отдаёт свой регион и свою геометрию', () => {
+        expect(propOrientation(twoSided, 'east')).toMatchObject({ sx: 96, w: 1, h: 2 });
+    });
+
+    it('без dir берётся south', () => {
+        expect(propOrientation(twoSided)).toMatchObject({ sx: 0, w: 4 });
+    });
+
+    it('осиротевшая сторона откатывается на south', () => {
+        // карту могли сохранить до того, как у типа удалили ориентацию
+        expect(propOrientation(twoSided, 'north')).toMatchObject({ sx: 0, w: 4 });
+    });
+
+    it('у типа без south берётся первая существующая сторона', () => {
+        const eastOnly: PropSpec = { label: 'Стол', orientations: { east: twoSided.orientations.east } };
+        expect(propOrientation(eastOnly, 'north')).toMatchObject({ sx: 96, h: 2 });
+    });
+
+    it('пустой набор ориентаций даёт null', () => {
+        expect(propOrientation({ label: 'Пусто', orientations: {} })).toBeNull();
+    });
+
+    it('propDirs перечисляет стороны в каноническом порядке', () => {
+        expect(propDirs(twoSided)).toEqual(['south', 'east']);
+    });
+
+    it('повёрнутый предмет блокирует клетки своей ориентации', () => {
+        const catalogue: PropCatalogue = { table: twoSided };
+        const map = makeMap(baseMap([{ id: 'p', type: 'table', x: 2, y: 2, dir: 'east' }]), catalogue);
+
+        expect(map.isWalkable(2, 2)).toBe(false); // основание 1×2 вниз
+        expect(map.isWalkable(2, 3)).toBe(false);
+        expect(map.isWalkable(3, 2)).toBe(true); // а не 4×1 вправо, как у south
+        expect(map.isOverhead(2, 1)).toBe(false); // у east нет части в воздухе
+    });
+});
+
 describe('геометрия спрайта', () => {
     it('основание лежит под высокой частью, обе части вместе дают полный спрайт', () => {
-        const cabinet = spec('cabinet'); // 2×1, воздух +2
+        const cabinet = orient('cabinet'); // 2×1, воздух +2
         const tall = propTallRect(cabinet);
         const base = propBaseRect(cabinet);
 
@@ -71,11 +145,11 @@ describe('геометрия спрайта', () => {
     });
 
     it('у предмета без высоты нет верхней части', () => {
-        expect(propTallRect(spec('bin'))).toBeNull();
+        expect(propTallRect(orient('bin'))).toBeNull();
     });
 
     it('footprint перечисляет все клетки основания', () => {
-        const cells = propFootprint(spec('cabinet'), { x: 3, y: 4 });
+        const cells = propFootprint(orient('cabinet'), { x: 3, y: 4 });
         expect(cells).toEqual([
             { x: 3, y: 4 },
             { x: 4, y: 4 },
@@ -127,14 +201,14 @@ describe('проходимость', () => {
 
 describe('помещается ли предмет', () => {
     it('шкаф с воздухом +2 не встаёт вплотную к верхнему краю', () => {
-        const cabinet = spec('cabinet'); // 2×1, воздух +2
+        const cabinet = orient('cabinet'); // 2×1, воздух +2
 
         expect(propFits(cabinet, 2, 1, 8, 8)).toBe(false);
         expect(propFits(cabinet, 2, 2, 8, 8)).toBe(true);
     });
 
     it('основание не должно вылезать вправо и вниз', () => {
-        const cabinet = spec('cabinet');
+        const cabinet = orient('cabinet');
 
         expect(propFits(cabinet, 7, 4, 8, 8)).toBe(false); // ширина 2, край на 8
         expect(propFits(cabinet, 6, 4, 8, 8)).toBe(true);
