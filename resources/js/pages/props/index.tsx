@@ -1,16 +1,17 @@
+import { OrientationTabs } from '@/components/props-editor/OrientationTabs';
+import { SheetCropper } from '@/components/props-editor/SheetCropper';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { propSheetUrl, type PropDir, type PropOrientation } from '@/game/props';
+import { PROP_DIRS, propSheetUrl, type PropDir, type PropOrientation } from '@/game/props';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Plus, Save, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const TILE = 32;
-const ZOOM = 3; // лист мелкий, без увеличения по нему не попасть мышью
 
 interface OrientationRow extends PropOrientation {
     dir: PropDir;
@@ -30,37 +31,26 @@ interface PropsPageProps extends SharedData {
     errors: Record<string, string>;
 }
 
-// Пока страница правит одну ориентацию (первую); вкладки сторон приедут
-// отдельной задачей. dir сохраняем, чтобы не переименовать чужую сторону.
 interface Draft {
     slug: string;
     label: string;
-    dir: PropDir;
-    sheet: string;
-    sx: number;
-    sy: number;
-    w: number;
-    h: number;
-    tall: number;
+    orientations: OrientationRow[];
 }
 
-const emptyDraft = (sheet: string): Draft => ({ slug: '', label: '', dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 });
+/** Вкладки держим в каноническом порядке сторон, как каталог и экспорт. */
+const byDir = (a: OrientationRow, b: OrientationRow): number => PROP_DIRS.indexOf(a.dir) - PROP_DIRS.indexOf(b.dir);
 
-const draftOf = (type: PropTypeRow): Draft => {
-    const first = type.orientations.at(0);
+const emptyDraft = (sheet: string): Draft => ({
+    slug: '',
+    label: '',
+    orientations: [{ dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 }],
+});
 
-    return {
-        slug: type.slug,
-        label: type.label,
-        dir: first?.dir ?? 'south',
-        sheet: first?.sheet ?? '',
-        sx: first?.sx ?? 0,
-        sy: first?.sy ?? 0,
-        w: first?.w ?? 1,
-        h: first?.h ?? 1,
-        tall: first?.tall ?? 0,
-    };
-};
+const draftOf = (type: PropTypeRow): Draft => ({
+    slug: type.slug,
+    label: type.label,
+    orientations: type.orientations.map((o) => ({ ...o })),
+});
 
 /** Превью предмета прямо из листа спрайтов — без канваса, одним div-ом. */
 function PropPreview({ orientation, fit }: { orientation: PropOrientation; fit?: number }) {
@@ -92,23 +82,22 @@ export default function PropsCatalogue() {
 
     const [selectedId, setSelectedId] = useState<number | null>(types[0]?.id ?? null);
     const [draft, setDraft] = useState<Draft>(types[0] ? draftOf(types[0]) : emptyDraft(sheets[0] ?? ''));
+    const [activeDir, setActiveDir] = useState<PropDir>(types[0]?.orientations.at(0)?.dir ?? 'south');
 
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const imageRef = useRef<HTMLImageElement | null>(null);
-    const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-    // что тянем мышью: рамку региона или границу «воздух / основание»
-    const dragRef = useRef<{ mode: 'region' | 'divider'; anchorX: number; anchorY: number } | null>(null);
-
-    const total = draft.h + draft.tall; // высота региона в тайлах
+    // активная сторона: инвариант «activeDir существует» поддерживают все
+    // обработчики ниже, фолбэк — на случай пустого типа с сервера
+    const active = draft.orientations.find((o) => o.dir === activeDir) ?? draft.orientations.at(0);
 
     const select = (type: PropTypeRow) => {
         setSelectedId(type.id);
         setDraft(draftOf(type));
+        setActiveDir(type.orientations.at(0)?.dir ?? 'south');
     };
 
     const startNew = () => {
         setSelectedId(null);
-        setDraft(emptyDraft(draft.sheet || sheets[0] || ''));
+        setDraft(emptyDraft(active?.sheet ?? sheets.at(0) ?? ''));
+        setActiveDir('south');
     };
 
     // После создания типа страница перезагружается списком с сервера —
@@ -122,170 +111,39 @@ export default function PropsCatalogue() {
         }
     }, [types, selectedId, draft.slug]);
 
-    // лист спрайтов грузим один раз на смену выбора
-    const sheet = draft.sheet;
-    useEffect(() => {
-        if (!sheet) {
-            return;
-        }
-        const img = new Image();
-        img.src = propSheetUrl({ sheet });
-        img.onload = () => {
-            imageRef.current = img;
-            setImageSize({ width: img.naturalWidth, height: img.naturalHeight });
-        };
-        return () => {
-            img.onload = null;
-        };
-    }, [sheet]);
-
-    const redraw = useCallback(() => {
-        const canvas = canvasRef.current;
-        const img = imageRef.current;
-        if (!canvas || !img || !imageSize.width) {
-            return;
-        }
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            return;
-        }
-
-        canvas.width = imageSize.width * ZOOM;
-        canvas.height = imageSize.height * ZOOM;
-
-        // шахматка — чтобы прозрачные части листа были видны
-        const cell = 8;
-        for (let y = 0; y < canvas.height; y += cell) {
-            for (let x = 0; x < canvas.width; x += cell) {
-                ctx.fillStyle = (x / cell + y / cell) % 2 === 0 ? '#f4f4f5' : '#e4e4e7';
-                ctx.fillRect(x, y, cell, cell);
-            }
-        }
-
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // сетка тайлов
-        ctx.strokeStyle = 'rgba(0,0,0,0.16)';
-        ctx.lineWidth = 1;
-        for (let x = 0; x <= imageSize.width; x += TILE) {
-            ctx.beginPath();
-            ctx.moveTo(x * ZOOM + 0.5, 0);
-            ctx.lineTo(x * ZOOM + 0.5, canvas.height);
-            ctx.stroke();
-        }
-        for (let y = 0; y <= imageSize.height; y += TILE) {
-            ctx.beginPath();
-            ctx.moveTo(0, y * ZOOM + 0.5);
-            ctx.lineTo(canvas.width, y * ZOOM + 0.5);
-            ctx.stroke();
-        }
-
-        // затемняем всё, что вне региона
-        const rx = draft.sx * ZOOM;
-        const ry = draft.sy * ZOOM;
-        const rw = draft.w * TILE * ZOOM;
-        const rh = total * TILE * ZOOM;
-        ctx.fillStyle = 'rgba(24,24,27,0.55)';
-        ctx.fillRect(0, 0, canvas.width, ry);
-        ctx.fillRect(0, ry + rh, canvas.width, canvas.height - ry - rh);
-        ctx.fillRect(0, ry, rx, rh);
-        ctx.fillRect(rx + rw, ry, canvas.width - rx - rw, rh);
-
-        // висящая в воздухе часть — синим, основание — зелёным
-        const tallH = draft.tall * TILE * ZOOM;
-        if (tallH > 0) {
-            ctx.fillStyle = 'rgba(59,130,246,0.18)';
-            ctx.fillRect(rx, ry, rw, tallH);
-        }
-        ctx.fillStyle = 'rgba(34,197,94,0.18)';
-        ctx.fillRect(rx, ry + tallH, rw, rh - tallH);
-
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(rx + 1, ry + 1, rw - 2, rh - 2);
-
-        // граница «воздух / основание» — её и тянут мышью
-        if (draft.tall > 0) {
-            ctx.strokeStyle = '#f59e0b';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(rx, ry + tallH);
-            ctx.lineTo(rx + rw, ry + tallH);
-            ctx.stroke();
-        }
-    }, [draft, imageSize, total]);
-
-    useEffect(redraw, [redraw]);
-
-    /**
-     * Координаты события в системе листа спрайтов. Канвас на странице может
-     * быть растянут (девайс-пиксели, зум браузера), поэтому масштаб берём из
-     * его реального размера, а не из ZOOM.
-     */
-    const tileAt = (e: React.PointerEvent<HTMLCanvasElement>) => {
-        const canvas = e.currentTarget;
-        const rect = canvas.getBoundingClientRect();
-        const perPixel = rect.width / canvas.width; // экранных px на один px канваса
-        const px = (e.clientX - rect.left) / perPixel / ZOOM;
-        const py = (e.clientY - rect.top) / perPixel / ZOOM;
-
-        return { x: Math.floor(px / TILE), y: Math.floor(py / TILE), py };
+    const patchOrientation = (dir: PropDir, patch: Partial<OrientationRow>) => {
+        setDraft((d) => ({ ...d, orientations: d.orientations.map((o) => (o.dir === dir ? { ...o, ...patch } : o)) }));
     };
 
-    const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-        const { x, y, py } = tileAt(e);
-        e.currentTarget.setPointerCapture(e.pointerId);
-
-        // клик у самой границы внутри региона — тянем её, а не рисуем новый регион
-        const dividerY = draft.sy + draft.tall * TILE;
-        const insideX = x >= draft.sx / TILE && x < draft.sx / TILE + draft.w;
-        const insideY = py >= draft.sy && py <= draft.sy + total * TILE;
-        if (insideX && insideY && Math.abs(py - dividerY) <= 6 && total > 1) {
-            dragRef.current = { mode: 'divider', anchorX: x, anchorY: y };
-            return;
-        }
-
-        dragRef.current = { mode: 'region', anchorX: x, anchorY: y };
-        setDraft((d) => ({ ...d, sx: x * TILE, sy: y * TILE, w: 1, h: 1, tall: 0 }));
+    // новая сторона начинается копией активной: обычно у ракурсов один лист,
+    // и отличается только регион
+    const addDir = (dir: PropDir) => {
+        setDraft((d) => {
+            const base = d.orientations.find((o) => o.dir === activeDir) ?? d.orientations.at(0);
+            const clone: OrientationRow = base ? { ...base, dir } : { dir, sheet: sheets[0] ?? '', sx: 0, sy: 0, w: 1, h: 1, tall: 0 };
+            return { ...d, orientations: [...d.orientations, clone].sort(byDir) };
+        });
+        setActiveDir(dir);
     };
 
-    const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-        const drag = dragRef.current;
-        if (!drag) {
-            return;
+    const removeDir = (dir: PropDir) => {
+        const rest = draft.orientations.filter((o) => o.dir !== dir);
+        const first = rest.at(0);
+        if (!first) {
+            return; // последнюю сторону не удаляем — у предмета обязана быть хотя бы одна
         }
-        const { x, y, py } = tileAt(e);
-
-        if (drag.mode === 'divider') {
-            // граница ходит по тайлам внутри региона; основание — минимум 1 тайл
-            const rows = Math.round((py - draft.sy) / TILE);
-            setDraft((d) => ({ ...d, tall: Math.max(0, Math.min(total - 1, rows)), h: total - Math.max(0, Math.min(total - 1, rows)) }));
-            return;
+        setDraft((d) => ({ ...d, orientations: d.orientations.filter((o) => o.dir !== dir) }));
+        if (dir === activeDir) {
+            setActiveDir(first.dir);
         }
-
-        const left = Math.min(drag.anchorX, x);
-        const top = Math.min(drag.anchorY, y);
-        setDraft((d) => ({
-            ...d,
-            sx: left * TILE,
-            sy: top * TILE,
-            w: Math.abs(x - drag.anchorX) + 1,
-            h: Math.abs(y - drag.anchorY) + 1 - d.tall,
-            tall: d.tall,
-        }));
-    };
-
-    const onPointerUp = () => {
-        dragRef.current = null;
     };
 
     const submit = () => {
-        // сервер ждёт полный набор ориентаций; страница правит одну
+        // сервер ждёт полный набор ориентаций: чего нет в запросе, того у типа больше нет
         const payload = {
             slug: draft.slug,
             label: draft.label,
-            orientations: [{ dir: draft.dir, sheet: draft.sheet, sx: draft.sx, sy: draft.sy, w: draft.w, h: draft.h, tall: draft.tall }],
+            orientations: draft.orientations.map((o) => ({ dir: o.dir, sheet: o.sheet, sx: o.sx, sy: o.sy, w: o.w, h: o.h, tall: o.tall })),
         };
         if (selectedId === null) {
             router.post('/props', payload, { preserveScroll: true });
@@ -299,6 +157,7 @@ export default function PropsCatalogue() {
     };
 
     const errorList = Object.values(errors);
+    const incomplete = !draft.label || !draft.slug || draft.orientations.some((o) => !o.sheet);
 
     return (
         <AppLayout breadcrumbs={[{ title: 'Каталог предметов', href: '/props' }]}>
@@ -306,7 +165,14 @@ export default function PropsCatalogue() {
             <div className="flex h-full flex-1 flex-col gap-4 p-4 lg:flex-row">
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <div className="flex items-center gap-2">
-                        <Select value={draft.sheet} onValueChange={(sheet) => setDraft((d) => ({ ...d, sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 }))}>
+                        <Select
+                            value={active?.sheet ?? ''}
+                            onValueChange={(sheet) => {
+                                if (active) {
+                                    patchOrientation(active.dir, { sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 });
+                                }
+                            }}
+                        >
                             <SelectTrigger className="w-[320px]">
                                 <SelectValue placeholder="Лист спрайтов" />
                             </SelectTrigger>
@@ -324,26 +190,16 @@ export default function PropsCatalogue() {
                         </p>
                     </div>
 
-                    <div className="border-sidebar-border/70 dark:border-sidebar-border min-h-0 flex-1 overflow-auto rounded-xl border p-2">
-                        <canvas
-                            ref={canvasRef}
-                            onPointerDown={onPointerDown}
-                            onPointerMove={onPointerMove}
-                            onPointerUp={onPointerUp}
-                            className="touch-none select-none"
-                            style={{ cursor: 'crosshair' }}
-                        />
-                    </div>
+                    {/* стороны предмета: у каждой свой лист, регион и геометрия */}
+                    <OrientationTabs
+                        dirs={draft.orientations.map((o) => o.dir)}
+                        active={active?.dir ?? 'south'}
+                        onSelect={setActiveDir}
+                        onAdd={addDir}
+                        onRemove={removeDir}
+                    />
 
-                    <div className="text-muted-foreground flex items-center gap-4 text-xs">
-                        <span>
-                            Регион {draft.sx},{draft.sy} · {draft.w}×{total} тайлов
-                        </span>
-                        <span className="text-green-600 dark:text-green-500">
-                            Основание {draft.w}×{draft.h}
-                        </span>
-                        <span className="text-blue-600 dark:text-blue-400">В воздухе +{draft.tall}</span>
-                    </div>
+                    {active && <SheetCropper sheet={active.sheet} value={active} onChange={(region) => patchOrientation(active.dir, region)} />}
                 </div>
 
                 <div className="flex w-full flex-col gap-4 lg:w-96">
@@ -366,7 +222,7 @@ export default function PropsCatalogue() {
 
                         <div className="flex items-start gap-3">
                             <div className="border-sidebar-border/70 dark:border-sidebar-border flex items-center justify-center rounded-md border p-2">
-                                {draft.sheet && <PropPreview orientation={draft} fit={96} />}
+                                {active?.sheet ? <PropPreview orientation={active} fit={96} /> : null}
                             </div>
                             <div className="flex-1 space-y-2">
                                 <div>
@@ -391,7 +247,7 @@ export default function PropsCatalogue() {
                             </div>
                         </div>
 
-                        <Button className="mt-3 w-full" size="sm" onClick={submit} disabled={!draft.label || !draft.slug || !draft.sheet}>
+                        <Button className="mt-3 w-full" size="sm" onClick={submit} disabled={incomplete}>
                             <Save className="size-3.5" />
                             {selectedId === null ? 'Добавить в каталог' : 'Сохранить'}
                         </Button>
