@@ -265,15 +265,17 @@
         },
         {
             "id": "desk-vertical-21",
-            "type": "desk-vertical",
+            "type": "meeting-table",
             "x": 33,
-            "y": 27
+            "y": 27,
+            "dir": "east"
         },
         {
             "id": "desk-vertical-22",
-            "type": "desk-vertical",
+            "type": "meeting-table",
             "x": 39,
-            "y": 27
+            "y": 27,
+            "dir": "east"
         }
     ],
     "doors": [

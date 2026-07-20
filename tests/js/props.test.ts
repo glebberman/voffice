@@ -231,7 +231,8 @@ describe('где персонаж накрыт верхним слоем', () =>
     });
 
     it('у предмета без воздуха накрытых клеток нет', () => {
-        const map = makeMap(baseMap([{ id: 'p', type: 'desk-vertical', x: 2, y: 4 }]), PROP_SPECS); // 1×2, воздух 0
+        // стол для встреч боком: ориентация east — 1×2, воздух 0
+        const map = makeMap(baseMap([{ id: 'p', type: 'meeting-table', x: 2, y: 4, dir: 'east' }]), PROP_SPECS);
 
         expect(map.isOverhead(2, 3)).toBe(false);
         expect(map.isOverhead(2, 4)).toBe(false);

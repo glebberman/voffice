@@ -18,7 +18,7 @@ import {
     type PortalData,
     type PropData,
 } from '@/game/map';
-import { propFits, propOrientation, propSheetUrl, propSpec, type PropCatalogue } from '@/game/props';
+import { PROP_DIR_LABEL, propDirs, propFits, propOrientation, propSheetUrl, propSpec, type PropCatalogue, type PropDir } from '@/game/props';
 import { TILE_COLOR, TILE_LABEL } from '@/game/tile-colors';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
@@ -280,6 +280,25 @@ export default function RoomEdit() {
             return;
         }
         setRows((prev) => setTile(prev, x, y, brush));
+    };
+
+    // Поворот меняет footprint, поэтому сперва проверяем, что предмет в новой
+    // ориентации помещается на прежнем месте. dir=south не храним: отсутствие
+    // поля и есть south, так карты остаются минимальными.
+    const rotateProp = (i: number, dir: PropDir) => {
+        setProps((prev) =>
+            prev.map((o, j) => {
+                if (j !== i) {
+                    return o;
+                }
+                const spec = propSpec(propTypes, o.type);
+                const orientation = spec ? propOrientation(spec, dir) : null;
+                if (!orientation || !propFits(orientation, o.x, o.y, width, height)) {
+                    return o;
+                }
+                return { ...o, dir: dir === 'south' ? undefined : dir };
+            }),
+        );
     };
 
     const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -636,31 +655,51 @@ export default function RoomEdit() {
                         </div>
                         {props.length > 0 && (
                             <div className="mt-3 flex max-h-48 flex-col gap-1 overflow-y-auto">
-                                {props.map((prop, i) => (
-                                    <div key={prop.id} className="flex items-center gap-1.5 text-xs">
-                                        <span className="flex-1 truncate">{propSpec(propTypes, prop.type)?.label ?? prop.type}</span>
-                                        <CoordInput
-                                            label="x"
-                                            value={prop.x}
-                                            max={width - 1}
-                                            onChange={(v) => setProps((p) => p.map((o, j) => (j === i ? { ...o, x: v } : o)))}
-                                        />
-                                        <CoordInput
-                                            label="y"
-                                            value={prop.y}
-                                            max={height - 1}
-                                            onChange={(v) => setProps((p) => p.map((o, j) => (j === i ? { ...o, y: v } : o)))}
-                                        />
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            className="size-6"
-                                            onClick={() => setProps((p) => p.filter((_, j) => j !== i))}
-                                        >
-                                            <Trash2 className="size-3" />
-                                        </Button>
-                                    </div>
-                                ))}
+                                {props.map((prop, i) => {
+                                    const spec = propSpec(propTypes, prop.type);
+                                    const dirs = spec ? propDirs(spec) : [];
+
+                                    return (
+                                        <div key={prop.id} className="flex items-center gap-1.5 text-xs">
+                                            <span className="flex-1 truncate">{spec?.label ?? prop.type}</span>
+                                            {/* поворот показываем, только когда есть из чего выбирать */}
+                                            {spec && dirs.length > 1 && (
+                                                <Select value={prop.dir ?? 'south'} onValueChange={(v) => rotateProp(i, v as PropDir)}>
+                                                    <SelectTrigger className="h-7 w-28 text-xs">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {dirs.map((dir) => (
+                                                            <SelectItem key={dir} value={dir}>
+                                                                {PROP_DIR_LABEL[dir]}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
+                                            <CoordInput
+                                                label="x"
+                                                value={prop.x}
+                                                max={width - 1}
+                                                onChange={(v) => setProps((p) => p.map((o, j) => (j === i ? { ...o, x: v } : o)))}
+                                            />
+                                            <CoordInput
+                                                label="y"
+                                                value={prop.y}
+                                                max={height - 1}
+                                                onChange={(v) => setProps((p) => p.map((o, j) => (j === i ? { ...o, y: v } : o)))}
+                                            />
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="size-6"
+                                                onClick={() => setProps((p) => p.filter((_, j) => j !== i))}
+                                            >
+                                                <Trash2 className="size-3" />
+                                            </Button>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

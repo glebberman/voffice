@@ -5,67 +5,139 @@
         "desk": {
             "label": "Письменный стол",
             "orientations": {
-                "south": { "sheet": "office/Desk, Ornate.png", "sx": 0, "sy": 0, "w": 3, "h": 1, "tall": 1 }
+                "south": {
+                    "sheet": "office/Desk, Ornate.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 3,
+                    "h": 1,
+                    "tall": 1
+                }
             }
         },
         "desk-drawers": {
             "label": "Стол с тумбами",
             "orientations": {
-                "south": { "sheet": "office/Desk, Ornate.png", "sx": 0, "sy": 64, "w": 3, "h": 1, "tall": 1 }
+                "south": {
+                    "sheet": "office/Desk, Ornate.png",
+                    "sx": 0,
+                    "sy": 64,
+                    "w": 3,
+                    "h": 1,
+                    "tall": 1
+                }
             }
         },
         "cabinet": {
             "label": "Шкаф (высокий)",
             "orientations": {
-                "south": { "sheet": "office/Desk, Ornate.png", "sx": 96, "sy": 0, "w": 2, "h": 1, "tall": 2 }
+                "south": {
+                    "sheet": "office/Desk, Ornate.png",
+                    "sx": 96,
+                    "sy": 0,
+                    "w": 2,
+                    "h": 1,
+                    "tall": 2
+                }
             }
         },
         "cooler": {
             "label": "Кулер (высокий)",
             "orientations": {
-                "south": { "sheet": "office/Water Cooler.png", "sx": 0, "sy": 0, "w": 1, "h": 1, "tall": 1 }
+                "south": {
+                    "sheet": "office/Water Cooler.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 1,
+                    "h": 1,
+                    "tall": 1
+                }
             }
         },
         "copier": {
             "label": "Копир",
             "orientations": {
-                "south": { "sheet": "office/Copy Machine.png", "sx": 0, "sy": 0, "w": 2, "h": 1, "tall": 1 }
+                "south": {
+                    "sheet": "office/Copy Machine.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 2,
+                    "h": 1,
+                    "tall": 1
+                }
             }
         },
         "meeting-table": {
             "label": "Стол для встреч",
             "orientations": {
-                "south": { "sheet": "office/Card Table.png", "sx": 0, "sy": 0, "w": 4, "h": 1, "tall": 1 }
+                "south": {
+                    "sheet": "office/Card Table.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 4,
+                    "h": 1,
+                    "tall": 1
+                },
+                "east": {
+                    "sheet": "office/Card Table.png",
+                    "sx": 96,
+                    "sy": 0,
+                    "w": 1,
+                    "h": 2,
+                    "tall": 0
+                }
             }
         },
         "tv": {
             "label": "Телевизор",
             "orientations": {
-                "south": { "sheet": "office/TV, Widescreen.png", "sx": 0, "sy": 0, "w": 3, "h": 1, "tall": 1 }
+                "south": {
+                    "sheet": "office/TV, Widescreen.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 3,
+                    "h": 1,
+                    "tall": 1
+                }
             }
         },
         "coffee-maker": {
             "label": "Кофеварка",
             "orientations": {
-                "south": { "sheet": "office/Coffee Maker.png", "sx": 0, "sy": 0, "w": 1, "h": 1, "tall": 0 }
+                "south": {
+                    "sheet": "office/Coffee Maker.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 1,
+                    "h": 1,
+                    "tall": 0
+                }
             }
         },
         "bin": {
             "label": "Урна",
             "orientations": {
-                "south": { "sheet": "office/Bins.png", "sx": 0, "sy": 0, "w": 1, "h": 1, "tall": 0 }
-            }
-        },
-        "desk-vertical": {
-            "label": "Стол поперёк",
-            "orientations": {
-                "south": { "sheet": "office/Card Table.png", "sx": 96, "sy": 0, "w": 1, "h": 2, "tall": 0 }
+                "south": {
+                    "sheet": "office/Bins.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 1,
+                    "h": 1,
+                    "tall": 0
+                }
             }
         },
         "laptop": {
             "label": "Ноутбук выключенный вперед",
             "orientations": {
-                "south": { "sheet": "office/laptop_1.png", "sx": 0, "sy": 0, "w": 1, "h": 1, "tall": 0 }
+                "south": {
+                    "sheet": "office/laptop_1.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 1,
+                    "h": 1,
+                    "tall": 0
+                }
             }
         }
     }
