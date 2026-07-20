@@ -3,7 +3,7 @@ import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } 
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { cutoutPolygon, GHOST_ALPHA, SPRITE_TOP } from './cutout';
 import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type MapObjectType } from './map';
-import { propBaseRect, propOrientation, propSheetUrl, propSpec, propTallRect } from './props';
+import { propBaseRect, propOrientation, propSheetUrl, propSpec, propTallRect, withState } from './props';
 import type { Direction, PlayerState, PlayerStatus } from './types';
 
 function sameRange(a: ChunkRange, b: ChunkRange): boolean {
@@ -236,10 +236,13 @@ export class OfficeScene {
     private drawProps(): void {
         for (const prop of this.map.props) {
             const spec = propSpec(this.map.catalogue, prop.type);
-            const orientation = spec ? propOrientation(spec, prop.dir) : null;
-            if (!orientation) {
+            const base = spec ? propOrientation(spec, prop.dir) : null;
+            if (!spec || !base) {
                 continue;
             }
+            // пока предметом никто не пользуется, он в состоянии по умолчанию;
+            // живое переключение приедет вместе с prop_states
+            const orientation = withState(base, spec.defaultState);
 
             const url = propSheetUrl(orientation);
             Assets.load(url)

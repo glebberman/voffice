@@ -92,7 +92,7 @@ class ExportResources extends Command
         foreach (PropType::query()->with('orientations')->orderBy('id')->get() as $type) {
             $orientations = [];
             foreach ($type->sortedOrientations() as $orientation) {
-                $orientations[$orientation->dir] = [
+                $entry = [
                     'sheet' => $orientation->sheet,
                     'sx' => $orientation->sx,
                     'sy' => $orientation->sy,
@@ -100,11 +100,20 @@ class ExportResources extends Command
                     'h' => $orientation->h,
                     'tall' => $orientation->tall,
                 ];
+                // пустые состояния не пишем: у большинства предметов их нет,
+                // и файл не должен зарастать пустыми объектами
+                $states = $orientation->stateRegions();
+                if ($states !== []) {
+                    $entry['states'] = $states;
+                }
+                $orientations[$orientation->dir] = $entry;
             }
-            $items[$type->slug] = [
-                'label' => $type->label,
-                'orientations' => $orientations,
-            ];
+            $item = ['label' => $type->label];
+            if ($type->default_state !== null) {
+                $item['defaultState'] = $type->default_state;
+            }
+            $item['orientations'] = $orientations;
+            $items[$type->slug] = $item;
         }
 
         return [

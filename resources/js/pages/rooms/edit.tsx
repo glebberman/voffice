@@ -18,7 +18,17 @@ import {
     type PortalData,
     type PropData,
 } from '@/game/map';
-import { PROP_DIR_LABEL, propDirs, propFits, propOrientation, propSheetUrl, propSpec, type PropCatalogue, type PropDir } from '@/game/props';
+import {
+    PROP_DIR_LABEL,
+    propDirs,
+    propFits,
+    propOrientation,
+    propSheetUrl,
+    propSpec,
+    withState,
+    type PropCatalogue,
+    type PropDir,
+} from '@/game/props';
 import { TILE_COLOR, TILE_LABEL } from '@/game/tile-colors';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
@@ -103,16 +113,23 @@ export default function RoomEdit() {
 
     // спрайтшиты предметов грузим один раз; sheetsReady будит перерисовку
     useEffect(() => {
+        const load = (url: string) => {
+            if (sheetsRef.current.has(url)) {
+                return;
+            }
+            const img = new Image();
+            img.onload = () => setSheetsReady((n) => n + 1);
+            img.src = url;
+            sheetsRef.current.set(url, img);
+        };
         for (const spec of Object.values(propTypes)) {
             for (const orientation of Object.values(spec?.orientations ?? {})) {
-                const url = propSheetUrl(orientation);
-                if (sheetsRef.current.has(url)) {
-                    continue;
+                load(propSheetUrl(orientation));
+                for (const state of Object.values(orientation.states ?? {})) {
+                    if (state) {
+                        load(propSheetUrl(state));
+                    }
                 }
-                const img = new Image();
-                img.onload = () => setSheetsReady((n) => n + 1);
-                img.src = url;
-                sheetsRef.current.set(url, img);
             }
         }
     }, [propTypes]);
@@ -177,11 +194,13 @@ export default function RoomEdit() {
             ctx.stroke();
         }
 
-        // предметы: спрайт занимает основание + высокую часть над ним
+        // предметы: спрайт занимает основание + высокую часть над ним;
+        // рисуем состояние по умолчанию — как в игре
         ctx.imageSmoothingEnabled = false;
         for (const prop of props) {
             const spec = propSpec(propTypes, prop.type);
-            const orientation = spec ? propOrientation(spec, prop.dir) : null;
+            const resolved = spec ? propOrientation(spec, prop.dir) : null;
+            const orientation = spec && resolved ? withState(resolved, spec.defaultState) : null;
             if (!orientation) {
                 continue;
             }

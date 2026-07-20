@@ -7,6 +7,7 @@ import {
     propOrientation,
     propSpec,
     propTallRect,
+    withState,
     type PropCatalogue,
     type PropOrientation,
     type PropSpec,
@@ -54,11 +55,31 @@ const baseMap = (props: MapData['props']): MapData => ({
 });
 
 describe('каталог предметов', () => {
-    it('спрайт каждой ориентации есть на диске', () => {
-        const missing = PROP_TYPES.flatMap((type) =>
-            Object.values(spec(type).orientations).filter((o) => !existsSync(`${LPC_DIR}/${o.sheet}`)).map((o) => `${type}: ${o.sheet}`),
+    it('спрайт каждой ориентации и каждого состояния есть на диске', () => {
+        const sheets = PROP_TYPES.flatMap((type) =>
+            Object.values(spec(type).orientations).flatMap((o) => [
+                { type, sheet: o.sheet },
+                ...Object.values(o.states ?? {}).flatMap((s) => (s ? [{ type, sheet: s.sheet }] : [])),
+            ]),
         );
+        const missing = sheets.filter(({ sheet }) => !existsSync(`${LPC_DIR}/${sheet}`)).map(({ type, sheet }) => `${type}: ${sheet}`);
         expect(missing).toEqual([]);
+    });
+
+    it('состояния согласованы: имена общие для сторон, дефолт существует', () => {
+        for (const type of PROP_TYPES) {
+            const item = spec(type);
+            const perDir = Object.values(item.orientations).map((o) => Object.keys(o.states ?? {}).sort());
+            for (const names of perDir) {
+                expect(names, type).toEqual(perDir[0]);
+            }
+            if ((perDir[0] ?? []).length > 0) {
+                expect(item.defaultState, type).toBeTruthy();
+                expect(perDir[0], type).toContain(item.defaultState);
+            } else {
+                expect(item.defaultState ?? null, type).toBeNull();
+            }
+        }
     });
 
     it('у каждой ориентации положительное основание и неотрицательная высота', () => {
@@ -124,6 +145,38 @@ describe('ориентации', () => {
         expect(map.isWalkable(2, 3)).toBe(false);
         expect(map.isWalkable(3, 2)).toBe(true); // а не 4×1 вправо, как у south
         expect(map.isOverhead(2, 1)).toBe(false); // у east нет части в воздухе
+    });
+});
+
+describe('состояния предмета', () => {
+    it('withState подменяет регион, сохраняя геометрию ориентации', () => {
+        // телевизор из каталога: включённый — регион шума во втором ряду листа
+        const tv = orient('tv');
+        const on = withState(tv, 'on');
+
+        expect(on).toMatchObject({ sx: 0, sy: 64, w: tv.w, h: tv.h, tall: tv.tall, sheet: tv.sheet });
+    });
+
+    it('дефолт телевизора — выключенный, и его регион совпадает с базовым', () => {
+        const tv = spec('tv');
+
+        expect(tv.defaultState).toBe('off');
+        expect(withState(orient('tv'), tv.defaultState)).toMatchObject({ sx: 0, sy: 0 });
+    });
+
+    it('неизвестное состояние и его отсутствие возвращают базовый регион', () => {
+        // карту могли сохранить до того, как состояние удалили из каталога
+        const tv = orient('tv');
+
+        expect(withState(tv, 'нет-такого')).toBe(tv);
+        expect(withState(tv, null)).toBe(tv);
+        expect(withState(tv, undefined)).toBe(tv);
+    });
+
+    it('предмет без состояний невозмутим', () => {
+        const bin = orient('bin');
+
+        expect(withState(bin, 'on')).toBe(bin);
     });
 });
 

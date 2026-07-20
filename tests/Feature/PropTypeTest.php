@@ -36,6 +36,7 @@ class PropTypeTest extends TestCase
         return array_merge([
             'slug' => 'bookshelf',
             'label' => 'Стеллаж',
+            'defaultState' => null,
             'orientations' => [
                 array_merge([
                     'dir' => 'south',
@@ -64,6 +65,11 @@ class PropTypeTest extends TestCase
 
         $cabinet = $this->nested($this->nested($this->nested($file, 'cabinet'), 'orientations'), 'south');
         $this->assertSame($cabinet['tall'], $this->south(PropType::where('slug', 'cabinet')->firstOrFail())->tall);
+
+        // телевизор — витрина состояний: выключен по умолчанию, включённый — шум
+        $tv = PropType::where('slug', 'tv')->firstOrFail();
+        $this->assertSame('off', $tv->default_state);
+        $this->assertSame(['sheet' => 'office/TV, Widescreen.png', 'sx' => 0, 'sy' => 64], $this->south($tv)->stateRegions()['on'] ?? null);
     }
 
     public function test_admin_flag_reaches_the_frontend(): void
@@ -189,6 +195,70 @@ class PropTypeTest extends TestCase
         // карта не менялась, но её предметы теперь занимают больше клеток
         $office = Room::where('slug', 'office')->firstOrFail();
         $this->assertNotEmpty(array_filter(($office->map['props'] ?? []), fn ($p) => $p['type'] === 'cabinet'));
+    }
+
+    public function test_states_persist_and_default_reaches_the_type(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // состояния: тот же размер региона, свой угол на листе
+        $payload = $this->validType(['defaultState' => 'off'], ['states' => [
+            ['name' => 'off', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 96, 'sy' => 0],
+            ['name' => 'on', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 0],
+        ]]);
+        $this->actingAs($admin)->post('/props', $payload)->assertRedirect('/props');
+
+        $type = PropType::where('slug', 'bookshelf')->firstOrFail();
+        $this->assertSame('off', $type->default_state);
+        // регионы хранятся словарём по имени и отсортированы
+        $this->assertSame(
+            ['off' => ['sheet' => 'office/Desk, Ornate.png', 'sx' => 96, 'sy' => 0], 'on' => ['sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 0]],
+            $this->south($type)->stateRegions(),
+        );
+    }
+
+    public function test_default_state_must_exist_and_be_required_with_states(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $states = [['name' => 'off', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 96, 'sy' => 0]];
+
+        // дефолт указывает на несуществующее состояние
+        $this->actingAs($admin)
+            ->post('/props', $this->validType(['defaultState' => 'on'], ['states' => $states]))
+            ->assertSessionHasErrors('defaultState');
+
+        // состояния есть, а дефолта нет
+        $this->actingAs($admin)
+            ->post('/props', $this->validType(['defaultState' => null], ['states' => $states]))
+            ->assertSessionHasErrors('defaultState');
+    }
+
+    public function test_state_names_must_match_across_orientations(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $payload = $this->validType(['defaultState' => 'off', 'orientations' => [
+            [
+                'dir' => 'south', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 96, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 2,
+                'states' => [['name' => 'off', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 96, 'sy' => 0]],
+            ],
+            [
+                // у этой стороны состояний нет вовсе — набор имён разошёлся
+                'dir' => 'east', 'sheet' => 'office/Card Table.png', 'sx' => 96, 'sy' => 0, 'w' => 1, 'h' => 2, 'tall' => 0,
+            ],
+        ]]);
+
+        $this->actingAs($admin)->post('/props', $payload)->assertSessionHasErrors('orientations.1.states');
+    }
+
+    public function test_state_region_must_fit_the_sheet(): void
+    {
+        // «Desk, Ornate.png» — 160×128 px; регион 2×3 тайла с sy=64 не влезет
+        $this->actingAs(User::factory()->admin()->create())
+            ->post('/props', $this->validType(['defaultState' => 'on'], ['states' => [
+                ['name' => 'on', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 64],
+            ]]))
+            ->assertSessionHasErrors('orientations.0.states.0.sheet');
     }
 
     public function test_orientations_come_as_a_complete_set(): void

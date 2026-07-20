@@ -17,13 +17,26 @@ export interface SpriteRegion {
  * Канвас-кроппер: протянуть рамку по листу — выделить регион, тянуть оранжевую
  * линию — двигать границу «воздух / основание». Полностью управляемый: сам
  * ничего не хранит, каждое движение мыши уходит в onChange.
+ *
+ * fixedSize — режим региона состояния: размер и граница заданы ориентацией,
+ * мышью двигается только положение рамки.
  */
-export function SheetCropper({ sheet, value, onChange }: { sheet: string; value: SpriteRegion; onChange: (region: SpriteRegion) => void }) {
+export function SheetCropper({
+    sheet,
+    value,
+    onChange,
+    fixedSize = false,
+}: {
+    sheet: string;
+    value: SpriteRegion;
+    onChange: (region: SpriteRegion) => void;
+    fixedSize?: boolean;
+}) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
     const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-    // что тянем мышью: рамку региона или границу «воздух / основание»
-    const dragRef = useRef<{ mode: 'region' | 'divider'; anchorX: number; anchorY: number } | null>(null);
+    // что тянем мышью: рамку региона, границу «воздух / основание» или рамку целиком
+    const dragRef = useRef<{ mode: 'region' | 'divider' | 'move'; anchorX: number; anchorY: number } | null>(null);
 
     const total = value.h + value.tall; // высота региона в тайлах
 
@@ -137,9 +150,23 @@ export function SheetCropper({ sheet, value, onChange }: { sheet: string; value:
         return { x: Math.floor(px / TILE), y: Math.floor(py / TILE), py };
     };
 
+    // рамка фиксированного размера встаёт левым верхним углом в тайл, не
+    // вылезая за лист
+    const moveTo = (x: number, y: number) => {
+        const maxX = Math.max(0, imageSize.width - value.w * TILE);
+        const maxY = Math.max(0, imageSize.height - total * TILE);
+        onChange({ ...value, sx: Math.max(0, Math.min(x * TILE, maxX)), sy: Math.max(0, Math.min(y * TILE, maxY)) });
+    };
+
     const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
         const { x, y, py } = tileAt(e);
         e.currentTarget.setPointerCapture(e.pointerId);
+
+        if (fixedSize) {
+            dragRef.current = { mode: 'move', anchorX: x, anchorY: y };
+            moveTo(x, y);
+            return;
+        }
 
         // клик у самой границы внутри региона — тянем её, а не рисуем новый регион
         const dividerY = value.sy + value.tall * TILE;
@@ -160,6 +187,11 @@ export function SheetCropper({ sheet, value, onChange }: { sheet: string; value:
             return;
         }
         const { x, y, py } = tileAt(e);
+
+        if (drag.mode === 'move') {
+            moveTo(x, y);
+            return;
+        }
 
         if (drag.mode === 'divider') {
             // граница ходит по тайлам внутри региона; основание — минимум 1 тайл

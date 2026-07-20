@@ -27,7 +27,11 @@ class PropTypeSeeder extends Seeder
                 throw new RuntimeException("props.json: у предмета {$slug} нет label или orientations");
             }
 
-            $type = PropType::updateOrCreate(['slug' => (string) $slug], ['label' => $spec['label']]);
+            $default = $spec['defaultState'] ?? null;
+            $type = PropType::updateOrCreate(['slug' => (string) $slug], [
+                'label' => $spec['label'],
+                'default_state' => is_string($default) ? $default : null,
+            ]);
 
             foreach ($spec['orientations'] as $dir => $orientation) {
                 if (! is_array($orientation)) {

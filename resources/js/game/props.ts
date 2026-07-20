@@ -17,6 +17,13 @@ export const PROP_DIR_LABEL: Record<PropDir, string> = {
     north: 'от камеры',
 };
 
+/** Регион состояния: свой лист и угол, размер — w×(h+tall) своей ориентации. */
+export interface PropStateRegion {
+    sheet: string;
+    sx: number;
+    sy: number;
+}
+
 /**
  * Одна сторона предмета: свой регион на листе и своя геометрия — у повёрнутого
  * предмета меняется не только картинка, но и footprint (стол 4×1 → 1×2).
@@ -28,10 +35,14 @@ export interface PropOrientation {
     w: number; // ширина основания в тайлах (блокирует проход)
     h: number; // высота основания в тайлах (блокирует проход)
     tall: number; // тайлов спрайта НАД основанием — за ними можно проходить
+    // имена общие для всех сторон типа; отсутствие поля = состояний нет
+    // (props.json пустые состояния не пишет, сервер присылает всегда)
+    states?: Partial<Record<string, PropStateRegion>>;
 }
 
 export interface PropSpec {
     label: string;
+    defaultState?: string | null; // что рисуется, пока предметом не пользуются
     orientations: Partial<Record<PropDir, PropOrientation>>;
 }
 
@@ -70,6 +81,17 @@ export function propOrientation(spec: PropSpec, dir?: PropDir): PropOrientation 
 /** Стороны, которыми предмет действительно может стоять, в каноническом порядке. */
 export function propDirs(spec: PropSpec): PropDir[] {
     return PROP_DIRS.filter((dir) => spec.orientations[dir] !== undefined);
+}
+
+/**
+ * Ориентация в заданном состоянии: регион берётся у состояния, геометрия — у
+ * ориентации. Неизвестное состояние (карту сохранили до правки каталога) или
+ * null возвращают ориентацию как есть — рисуется базовый регион.
+ */
+export function withState(orientation: PropOrientation, state: string | null | undefined): PropOrientation {
+    const region = state != null ? orientation.states?.[state] : undefined;
+
+    return region ? { ...orientation, ...region } : orientation;
 }
 
 export function propSheetUrl(orientation: Pick<PropOrientation, 'sheet'>): string {

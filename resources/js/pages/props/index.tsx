@@ -1,10 +1,11 @@
 import { OrientationTabs } from '@/components/props-editor/OrientationTabs';
 import { SheetCropper } from '@/components/props-editor/SheetCropper';
+import { StateTabs } from '@/components/props-editor/StateTabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PROP_DIRS, propSheetUrl, type PropDir, type PropOrientation } from '@/game/props';
+import { PROP_DIRS, propSheetUrl, withState, type PropDir, type PropOrientation, type PropStateRegion } from '@/game/props';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
@@ -15,12 +16,14 @@ const TILE = 32;
 
 interface OrientationRow extends PropOrientation {
     dir: PropDir;
+    states: Partial<Record<string, PropStateRegion>>; // в черновике всегда есть, хотя бы пустые
 }
 
 interface PropTypeRow {
     id: number;
     slug: string;
     label: string;
+    defaultState: string | null;
     orientations: OrientationRow[];
 }
 
@@ -34,6 +37,7 @@ interface PropsPageProps extends SharedData {
 interface Draft {
     slug: string;
     label: string;
+    defaultState: string | null;
     orientations: OrientationRow[];
 }
 
@@ -43,13 +47,15 @@ const byDir = (a: OrientationRow, b: OrientationRow): number => PROP_DIRS.indexO
 const emptyDraft = (sheet: string): Draft => ({
     slug: '',
     label: '',
-    orientations: [{ dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 }],
+    defaultState: null,
+    orientations: [{ dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0, states: {} }],
 });
 
 const draftOf = (type: PropTypeRow): Draft => ({
     slug: type.slug,
     label: type.label,
-    orientations: type.orientations.map((o) => ({ ...o })),
+    defaultState: type.defaultState,
+    orientations: type.orientations.map((o) => ({ ...o, states: { ...o.states } })),
 });
 
 /** Превью предмета прямо из листа спрайтов — без канваса, одним div-ом. */
@@ -83,21 +89,29 @@ export default function PropsCatalogue() {
     const [selectedId, setSelectedId] = useState<number | null>(types[0]?.id ?? null);
     const [draft, setDraft] = useState<Draft>(types[0] ? draftOf(types[0]) : emptyDraft(sheets[0] ?? ''));
     const [activeDir, setActiveDir] = useState<PropDir>(types[0]?.orientations.at(0)?.dir ?? 'south');
+    // какой регион правит кроппер: null — базовый регион ориентации, иначе имя состояния
+    const [activeState, setActiveState] = useState<string | null>(null);
 
     // активная сторона: инвариант «activeDir существует» поддерживают все
     // обработчики ниже, фолбэк — на случай пустого типа с сервера
     const active = draft.orientations.find((o) => o.dir === activeDir) ?? draft.orientations.at(0);
 
+    // имена состояний общие для всех сторон — берём с первой
+    const stateNames = Object.keys(draft.orientations.at(0)?.states ?? {}).sort();
+    const stateRegion = active && activeState !== null ? active.states[activeState] : undefined;
+
     const select = (type: PropTypeRow) => {
         setSelectedId(type.id);
         setDraft(draftOf(type));
         setActiveDir(type.orientations.at(0)?.dir ?? 'south');
+        setActiveState(null);
     };
 
     const startNew = () => {
         setSelectedId(null);
         setDraft(emptyDraft(active?.sheet ?? sheets.at(0) ?? ''));
         setActiveDir('south');
+        setActiveState(null);
     };
 
     // После создания типа страница перезагружается списком с сервера —
@@ -115,12 +129,48 @@ export default function PropsCatalogue() {
         setDraft((d) => ({ ...d, orientations: d.orientations.map((o) => (o.dir === dir ? { ...o, ...patch } : o)) }));
     };
 
+    const patchStateRegion = (dir: PropDir, name: string, region: PropStateRegion) => {
+        setDraft((d) => ({
+            ...d,
+            orientations: d.orientations.map((o) => (o.dir === dir ? { ...o, states: { ...o.states, [name]: region } } : o)),
+        }));
+    };
+
+    // Состояние добавляется сразу всем сторонам (имена общие для типа), регион
+    // начинается копией базового — обычно отличается только угол на листе.
+    // Первое состояние сразу становится дефолтным.
+    const addState = (name: string) => {
+        setDraft((d) => ({
+            ...d,
+            defaultState: d.defaultState ?? name,
+            orientations: d.orientations.map((o) => ({ ...o, states: { ...o.states, [name]: { sheet: o.sheet, sx: o.sx, sy: o.sy } } })),
+        }));
+        setActiveState(name);
+    };
+
+    const removeState = (name: string) => {
+        const rest = stateNames.filter((n) => n !== name);
+        setDraft((d) => ({
+            ...d,
+            defaultState: d.defaultState === name ? (rest.at(0) ?? null) : d.defaultState,
+            orientations: d.orientations.map((o) => ({
+                ...o,
+                states: Object.fromEntries(Object.entries(o.states).filter(([n]) => n !== name)),
+            })),
+        }));
+        if (activeState === name) {
+            setActiveState(null);
+        }
+    };
+
     // новая сторона начинается копией активной: обычно у ракурсов один лист,
     // и отличается только регион
     const addDir = (dir: PropDir) => {
         setDraft((d) => {
             const base = d.orientations.find((o) => o.dir === activeDir) ?? d.orientations.at(0);
-            const clone: OrientationRow = base ? { ...base, dir } : { dir, sheet: sheets[0] ?? '', sx: 0, sy: 0, w: 1, h: 1, tall: 0 };
+            const clone: OrientationRow = base
+                ? { ...base, dir, states: { ...base.states } }
+                : { dir, sheet: sheets[0] ?? '', sx: 0, sy: 0, w: 1, h: 1, tall: 0, states: {} };
             return { ...d, orientations: [...d.orientations, clone].sort(byDir) };
         });
         setActiveDir(dir);
@@ -143,7 +193,19 @@ export default function PropsCatalogue() {
         const payload = {
             slug: draft.slug,
             label: draft.label,
-            orientations: draft.orientations.map((o) => ({ dir: o.dir, sheet: o.sheet, sx: o.sx, sy: o.sy, w: o.w, h: o.h, tall: o.tall })),
+            defaultState: draft.defaultState,
+            orientations: draft.orientations.map((o) => ({
+                dir: o.dir,
+                sheet: o.sheet,
+                sx: o.sx,
+                sy: o.sy,
+                w: o.w,
+                h: o.h,
+                tall: o.tall,
+                states: Object.entries(o.states).flatMap(([name, region]) =>
+                    region ? [{ name, sheet: region.sheet, sx: region.sx, sy: region.sy }] : [],
+                ),
+            })),
         };
         if (selectedId === null) {
             router.post('/props', payload, { preserveScroll: true });
@@ -166,9 +228,15 @@ export default function PropsCatalogue() {
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <div className="flex items-center gap-2">
                         <Select
-                            value={active?.sheet ?? ''}
+                            value={stateRegion ? stateRegion.sheet : (active?.sheet ?? '')}
                             onValueChange={(sheet) => {
-                                if (active) {
+                                if (!active) {
+                                    return;
+                                }
+                                // при выбранном состоянии меняется его лист, не базовый
+                                if (activeState !== null && stateRegion) {
+                                    patchStateRegion(active.dir, activeState, { sheet, sx: 0, sy: 0 });
+                                } else {
                                     patchOrientation(active.dir, { sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0 });
                                 }
                             }}
@@ -199,7 +267,30 @@ export default function PropsCatalogue() {
                         onRemove={removeDir}
                     />
 
-                    {active && <SheetCropper sheet={active.sheet} value={active} onChange={(region) => patchOrientation(active.dir, region)} />}
+                    <StateTabs
+                        names={stateNames}
+                        active={activeState}
+                        defaultState={draft.defaultState}
+                        onSelect={setActiveState}
+                        onAdd={addState}
+                        onRemove={removeState}
+                        onDefault={(name) => setDraft((d) => ({ ...d, defaultState: name }))}
+                    />
+
+                    {active && (
+                        <SheetCropper
+                            sheet={stateRegion ? stateRegion.sheet : active.sheet}
+                            value={stateRegion ? { sx: stateRegion.sx, sy: stateRegion.sy, w: active.w, h: active.h, tall: active.tall } : active}
+                            fixedSize={stateRegion !== undefined}
+                            onChange={(region) => {
+                                if (activeState !== null && stateRegion) {
+                                    patchStateRegion(active.dir, activeState, { sheet: stateRegion.sheet, sx: region.sx, sy: region.sy });
+                                } else {
+                                    patchOrientation(active.dir, region);
+                                }
+                            }}
+                        />
+                    )}
                 </div>
 
                 <div className="flex w-full flex-col gap-4 lg:w-96">
@@ -222,7 +313,8 @@ export default function PropsCatalogue() {
 
                         <div className="flex items-start gap-3">
                             <div className="border-sidebar-border/70 dark:border-sidebar-border flex items-center justify-center rounded-md border p-2">
-                                {active?.sheet ? <PropPreview orientation={active} fit={96} /> : null}
+                                {/* превью показывает то, что правится: активное состояние или дефолт */}
+                                {active?.sheet ? <PropPreview orientation={withState(active, activeState ?? draft.defaultState)} fit={96} /> : null}
                             </div>
                             <div className="flex-1 space-y-2">
                                 <div>

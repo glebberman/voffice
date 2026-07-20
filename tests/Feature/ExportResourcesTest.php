@@ -70,11 +70,12 @@ class ExportResourcesTest extends TestCase
     {
         // ровно тот случай, ради которого команда и заведена: предмет завели
         // через страницу каталога, в файл он не попал и исчез бы при db:seed
-        $type = PropType::create(['slug' => 'whiteboard', 'label' => 'Маркерная доска']);
+        $type = PropType::create(['slug' => 'whiteboard', 'label' => 'Маркерная доска', 'default_state' => 'clean']);
         $type->orientations()->create([
             'dir' => 'south',
             'sheet' => 'office/Desk, Ornate.png',
             'sx' => 0, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 1,
+            'states' => ['clean' => ['sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 64]],
         ]);
 
         $this->export()->assertSuccessful();
@@ -84,8 +85,12 @@ class ExportResourcesTest extends TestCase
         $this->assertSame(
             [
                 'label' => 'Маркерная доска',
+                'defaultState' => 'clean',
                 'orientations' => [
-                    'south' => ['sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 1],
+                    'south' => [
+                        'sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 1,
+                        'states' => ['clean' => ['sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 64]],
+                    ],
                 ],
             ],
             $items['whiteboard'],

@@ -31,12 +31,14 @@ class PropTypeController extends Controller
                     'w' => $orientation->w,
                     'h' => $orientation->h,
                     'tall' => $orientation->tall,
+                    'states' => $orientation->stateRegions(),
                 ];
             }
             $types[] = [
                 'id' => $type->id,
                 'slug' => $type->slug,
                 'label' => $type->label,
+                'defaultState' => $type->default_state,
                 'orientations' => $orientations,
             ];
         }

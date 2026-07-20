@@ -10,12 +10,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * каждой стороны — в prop_orientations). Карты ссылаются на него по `slug`,
  * ориентация выбирается полем `dir` предмета на карте.
  *
- * @phpstan-type OrientationSpec array{sheet: string, sx: int, sy: int, w: int, h: int, tall: int}
- * @phpstan-type PropSpec array{label: string, orientations: array<string, OrientationSpec>}
+ * Состояния (телевизор включён / выключен) — именованные регионы поверх
+ * ориентации: имена общие для всех сторон типа, геометрия — от ориентации.
+ * `default_state` — что рисуется по умолчанию; null = состояний нет.
+ *
+ * @phpstan-type StateRegion array{sheet: string, sx: int, sy: int}
+ * @phpstan-type OrientationSpec array{sheet: string, sx: int, sy: int, w: int, h: int, tall: int, states: array<string, StateRegion>}
+ * @phpstan-type PropSpec array{label: string, defaultState: string|null, orientations: array<string, OrientationSpec>}
  */
 class PropType extends Model
 {
-    protected $fillable = ['slug', 'label'];
+    protected $fillable = ['slug', 'label', 'default_state'];
 
     /**
      * @return HasMany<PropOrientation, $this>
@@ -49,10 +54,12 @@ class PropType extends Model
                     'w' => $orientation->w,
                     'h' => $orientation->h,
                     'tall' => $orientation->tall,
+                    'states' => $orientation->stateRegions(),
                 ];
             }
             $catalogue[$type->slug] = [
                 'label' => $type->label,
+                'defaultState' => $type->default_state,
                 'orientations' => $orientations,
             ];
         }
