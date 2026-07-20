@@ -1,9 +1,58 @@
 {
-    "_comment": "Каталог предметов: единый источник правды для клиента (game/props.ts) и валидации (MapUpdateRequest). У предмета — ориентации: стороны, которыми он может стоять (отсутствие dir у предмета на карте означает south). Регион задаётся в пикселях спрайтшита; ширина = w*32, высота = (h+tall)*32. footprint w×h блокирует проход, tall — тайлы спрайта НАД основанием, за ними можно проходить. states — именованные регионы того же размера поверх ориентации (свой лист и угол, геометрия от ориентации); defaultState — что рисуется, пока предметом не пользуются.",
+    "_comment": "Каталог предметов: единый источник правды для клиента (game/props.ts) и валидации (MapUpdateRequest). У предмета — ориентации: стороны, которыми он может стоять (отсутствие dir у предмета на карте означает south). Регион задаётся в пикселях спрайтшита; ширина = w*32, высота = (h+tall)*32. footprint w×h блокирует проход, tall — тайлы спрайта НАД основанием, за ними можно проходить. states — именованные регионы того же размера поверх ориентации (свой лист и угол, геометрия от ориентации); defaultState — что рисуется, пока предметом не пользуются. categories — редактируемые оси группировки каталога (как в Sims); предмет ссылается на них слогами в purposes (ось purpose) и roomKinds (ось room), description — текст карточки каталога.",
     "tileSize": 32,
+    "categories": {
+        "purpose": {
+            "work": {
+                "label": "Рабочее место",
+                "sort": 1
+            },
+            "storage": {
+                "label": "Хранение",
+                "sort": 2
+            },
+            "tech": {
+                "label": "Техника",
+                "sort": 3
+            },
+            "food": {
+                "label": "Еда и напитки",
+                "sort": 4
+            },
+            "media": {
+                "label": "Медиа",
+                "sort": 5
+            },
+            "utility": {
+                "label": "Хозяйственное",
+                "sort": 6
+            }
+        },
+        "room": {
+            "openspace": {
+                "label": "Опенспейс",
+                "sort": 1
+            },
+            "meeting": {
+                "label": "Переговорка",
+                "sort": 2
+            },
+            "kitchen": {
+                "label": "Кухня",
+                "sort": 3
+            },
+            "lounge": {
+                "label": "Лаунж",
+                "sort": 4
+            }
+        }
+    },
     "items": {
         "desk": {
             "label": "Письменный стол",
+            "description": "Рабочий стол на три тайла: столешница висит в воздухе, за ней можно пройти.",
+            "purposes": ["work"],
+            "roomKinds": ["openspace"],
             "orientations": {
                 "south": {
                     "sheet": "office/Desk, Ornate.png",
@@ -17,6 +66,9 @@
         },
         "desk-drawers": {
             "label": "Стол с тумбами",
+            "description": "Письменный стол с тумбами по бокам.",
+            "purposes": ["work"],
+            "roomKinds": ["openspace"],
             "orientations": {
                 "south": {
                     "sheet": "office/Desk, Ornate.png",
@@ -30,6 +82,9 @@
         },
         "cabinet": {
             "label": "Шкаф (высокий)",
+            "description": "Шкаф в человеческий рост: занимает две клетки, верх нависает — за ним ходят.",
+            "purposes": ["storage"],
+            "roomKinds": ["openspace", "meeting"],
             "orientations": {
                 "south": {
                     "sheet": "office/Desk, Ornate.png",
@@ -43,6 +98,9 @@
         },
         "cooler": {
             "label": "Кулер (высокий)",
+            "description": "Кулер с водой — место, у которого заводятся разговоры.",
+            "purposes": ["food"],
+            "roomKinds": ["openspace", "kitchen"],
             "orientations": {
                 "south": {
                     "sheet": "office/Water Cooler.png",
@@ -56,6 +114,9 @@
         },
         "copier": {
             "label": "Копир",
+            "description": "Офисный копир на две клетки.",
+            "purposes": ["tech"],
+            "roomKinds": ["openspace"],
             "orientations": {
                 "south": {
                     "sheet": "office/Copy Machine.png",
@@ -69,6 +130,9 @@
         },
         "meeting-table": {
             "label": "Стол для встреч",
+            "description": "Длинный стол; поворачивается боком и тогда занимает 1×2.",
+            "purposes": ["work"],
+            "roomKinds": ["meeting"],
             "orientations": {
                 "south": {
                     "sheet": "office/Card Table.png",
@@ -90,7 +154,10 @@
         },
         "tv": {
             "label": "Телевизор",
+            "description": "Телевизор с состояниями: выключен, без сигнала, включён.",
             "defaultState": "off",
+            "purposes": ["media"],
+            "roomKinds": ["meeting", "lounge"],
             "orientations": {
                 "south": {
                     "sheet": "office/TV, Widescreen.png",
@@ -100,15 +167,30 @@
                     "h": 1,
                     "tall": 1,
                     "states": {
-                        "no-signal": { "sheet": "office/TV, Widescreen.png", "sx": 96, "sy": 0 },
-                        "off": { "sheet": "office/TV, Widescreen.png", "sx": 0, "sy": 0 },
-                        "on": { "sheet": "office/TV, Widescreen.png", "sx": 0, "sy": 64 }
+                        "no-signal": {
+                            "sheet": "office/TV, Widescreen.png",
+                            "sx": 96,
+                            "sy": 0
+                        },
+                        "off": {
+                            "sheet": "office/TV, Widescreen.png",
+                            "sx": 0,
+                            "sy": 0
+                        },
+                        "on": {
+                            "sheet": "office/TV, Widescreen.png",
+                            "sx": 0,
+                            "sy": 64
+                        }
                     }
                 }
             }
         },
         "coffee-maker": {
             "label": "Кофеварка",
+            "description": "Кофеварка для кухонного угла.",
+            "purposes": ["food"],
+            "roomKinds": ["kitchen"],
             "orientations": {
                 "south": {
                     "sheet": "office/Coffee Maker.png",
@@ -122,6 +204,9 @@
         },
         "bin": {
             "label": "Урна",
+            "description": "Урна — просто урна.",
+            "purposes": ["utility"],
+            "roomKinds": ["openspace", "kitchen"],
             "orientations": {
                 "south": {
                     "sheet": "office/Bins.png",
@@ -135,6 +220,9 @@
         },
         "laptop": {
             "label": "Ноутбук выключенный вперед",
+            "description": "Ноутбук на столе.",
+            "purposes": ["tech"],
+            "roomKinds": ["openspace"],
             "orientations": {
                 "south": {
                     "sheet": "office/laptop_1.png",

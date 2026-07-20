@@ -34,6 +34,9 @@ class PropTypeRequest extends FormRequest
                 Rule::unique('prop_types', 'slug')->ignore($type),
             ],
             'label' => ['required', 'string', 'max:80'],
+            'description' => ['present', 'nullable', 'string', 'max:500'], // карточка каталога
+            'categoryIds' => ['sometimes', 'array', 'max:32'],
+            'categoryIds.*' => ['integer', Rule::exists('prop_categories', 'id')],
             // что рисуется, пока предметом не пользуются; null = состояний нет
             'defaultState' => ['present', 'nullable', 'string', 'max:64', 'regex:'.self::NAME_REGEX],
             // ориентации приходят полным набором: чего нет в запросе, того у
@@ -201,14 +204,37 @@ class PropTypeRequest extends FormRequest
     }
 
     /**
-     * @return array{slug: string, label: string, default_state: string|null}
+     * @return array{slug: string, label: string, description: string, default_state: string|null}
      */
     public function typeFields(): array
     {
+        $description = $this->input('description');
+
         return [
             'slug' => $this->string('slug')->toString(),
             'label' => $this->string('label')->toString(),
+            'description' => is_string($description) ? $description : '',
             'default_state' => $this->validatedDefaultState(),
         ];
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function categoryIds(): array
+    {
+        $raw = $this->input('categoryIds');
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($raw as $id) {
+            if (is_int($id)) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
     }
 }

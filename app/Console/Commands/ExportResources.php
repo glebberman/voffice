@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\PropCategory;
 use App\Models\PropType;
 use App\Models\Room;
 use App\Support\JsonFile;
@@ -88,8 +89,13 @@ class ExportResources extends Command
         $source = resource_path('props.json');
         $existing = is_file($source) ? JsonFile::read($source) : [];
 
+        $categories = [];
+        foreach (PropCategory::query()->orderBy('axis')->orderBy('sort')->orderBy('slug')->get() as $category) {
+            $categories[$category->axis][$category->slug] = ['label' => $category->label, 'sort' => $category->sort];
+        }
+
         $items = [];
-        foreach (PropType::query()->with('orientations')->orderBy('id')->get() as $type) {
+        foreach (PropType::query()->with(['orientations', 'categories'])->orderBy('id')->get() as $type) {
             $orientations = [];
             foreach ($type->sortedOrientations() as $orientation) {
                 $entry = [
@@ -109,18 +115,34 @@ class ExportResources extends Command
                 $orientations[$orientation->dir] = $entry;
             }
             $item = ['label' => $type->label];
+            if ($type->description !== '') {
+                $item['description'] = $type->description;
+            }
             if ($type->default_state !== null) {
                 $item['defaultState'] = $type->default_state;
+            }
+            $purposes = $type->categorySlugs('purpose');
+            if ($purposes !== []) {
+                $item['purposes'] = $purposes;
+            }
+            $roomKinds = $type->categorySlugs('room');
+            if ($roomKinds !== []) {
+                $item['roomKinds'] = $roomKinds;
             }
             $item['orientations'] = $orientations;
             $items[$type->slug] = $item;
         }
 
-        return [
+        $out = [
             '_comment' => $existing['_comment'] ?? '',
             'tileSize' => $existing['tileSize'] ?? 32,
-            'items' => $items,
         ];
+        if ($categories !== []) {
+            $out['categories'] = $categories;
+        }
+        $out['items'] = $items;
+
+        return $out;
     }
 
     /**

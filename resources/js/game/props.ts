@@ -42,7 +42,10 @@ export interface PropOrientation {
 
 export interface PropSpec {
     label: string;
+    description?: string; // текст карточки каталога
     defaultState?: string | null; // что рисуется, пока предметом не пользуются
+    purposes?: string[]; // слоги категорий оси «назначение»
+    roomKinds?: string[]; // слоги категорий оси «тип помещения»
     orientations: Partial<Record<PropDir, PropOrientation>>;
 }
 

@@ -99,6 +99,19 @@ describe('каталог предметов', () => {
     it('неизвестный тип не ломает propSpec', () => {
         expect(propSpec(PROP_SPECS, 'нет-такого')).toBeNull();
     });
+
+    it('категории предметов существуют на своих осях', () => {
+        const purposeSlugs = Object.keys(catalogueFile.categories.purpose);
+        const roomSlugs = Object.keys(catalogueFile.categories.room);
+        for (const type of PROP_TYPES) {
+            for (const slug of spec(type).purposes ?? []) {
+                expect(purposeSlugs, type).toContain(slug);
+            }
+            for (const slug of spec(type).roomKinds ?? []) {
+                expect(roomSlugs, type).toContain(slug);
+            }
+        }
+    });
 });
 
 describe('ориентации', () => {

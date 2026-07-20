@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\PropTypeRequest;
+use App\Models\PropCategory;
 use App\Models\PropType;
 use App\Models\Room;
 use App\Support\CurrentUser;
@@ -19,8 +20,18 @@ class PropTypeController extends Controller
     {
         abort_unless((bool) CurrentUser::of($request)->is_admin, 403);
 
+        $categories = [];
+        foreach (PropCategory::query()->orderBy('axis')->orderBy('sort')->orderBy('slug')->get() as $category) {
+            $categories[] = [
+                'id' => $category->id,
+                'axis' => $category->axis,
+                'slug' => $category->slug,
+                'label' => $category->label,
+            ];
+        }
+
         $types = [];
-        foreach (PropType::query()->with('orientations')->orderBy('id')->get() as $type) {
+        foreach (PropType::query()->with(['orientations', 'categories'])->orderBy('id')->get() as $type) {
             $orientations = [];
             foreach ($type->sortedOrientations() as $orientation) {
                 $orientations[] = [
@@ -38,13 +49,16 @@ class PropTypeController extends Controller
                 'id' => $type->id,
                 'slug' => $type->slug,
                 'label' => $type->label,
+                'description' => $type->description,
                 'defaultState' => $type->default_state,
+                'categoryIds' => $type->categories->map(fn (PropCategory $c): int => $c->id)->all(),
                 'orientations' => $orientations,
             ];
         }
 
         return Inertia::render('props/index', [
             'types' => $types,
+            'categories' => $categories,
             'sheets' => SpriteSheets::all(),
             // сколько раз каждый тип уже стоит на картах: удалять использованные нельзя
             'usage' => $this->usage(),
@@ -54,7 +68,9 @@ class PropTypeController extends Controller
     public function store(PropTypeRequest $request): RedirectResponse
     {
         DB::transaction(function () use ($request): void {
-            $this->syncOrientations(PropType::create($request->typeFields()), $request);
+            $type = PropType::create($request->typeFields());
+            $type->categories()->sync($request->categoryIds());
+            $this->syncOrientations($type, $request);
         });
 
         return redirect()->route('props.index');
@@ -64,6 +80,7 @@ class PropTypeController extends Controller
     {
         DB::transaction(function () use ($request, $propType): void {
             $propType->update($request->typeFields());
+            $propType->categories()->sync($request->categoryIds());
             $this->syncOrientations($propType, $request);
         });
 

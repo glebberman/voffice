@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\PropCategory;
 use App\Models\PropOrientation;
 use App\Models\PropType;
 use App\Models\Room;
@@ -36,6 +37,7 @@ class PropTypeTest extends TestCase
         return array_merge([
             'slug' => 'bookshelf',
             'label' => 'Стеллаж',
+            'description' => '',
             'defaultState' => null,
             'orientations' => [
                 array_merge([
@@ -195,6 +197,32 @@ class PropTypeTest extends TestCase
         // карта не менялась, но её предметы теперь занимают больше клеток
         $office = Room::where('slug', 'office')->firstOrFail();
         $this->assertNotEmpty(array_filter(($office->map['props'] ?? []), fn ($p) => $p['type'] === 'cabinet'));
+    }
+
+    public function test_description_and_categories_persist(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $work = PropCategory::where('axis', 'purpose')->where('slug', 'work')->firstOrFail();
+        $meeting = PropCategory::where('axis', 'room')->where('slug', 'meeting')->firstOrFail();
+
+        $payload = $this->validType(['description' => 'Стеллаж для переговорки', 'categoryIds' => [$work->id, $meeting->id]]);
+        $this->actingAs($admin)->post('/props', $payload)->assertRedirect('/props');
+
+        $created = PropType::where('slug', 'bookshelf')->firstOrFail();
+        $this->assertSame('Стеллаж для переговорки', $created->description);
+        $this->assertSame(['work'], $created->categorySlugs('purpose'));
+        $this->assertSame(['meeting'], $created->categorySlugs('room'));
+
+        // категории приходят полным набором: пропавшая из запроса отвязывается
+        $this->actingAs($admin)
+            ->put("/props/{$created->id}", $this->validType(['categoryIds' => [$meeting->id]]))
+            ->assertRedirect('/props');
+        $this->assertSame([], $created->refresh()->categorySlugs('purpose'));
+
+        // чужой id не проходит валидацию
+        $this->actingAs($admin)
+            ->post('/props', $this->validType(['slug' => 'bookshelf2', 'categoryIds' => [999999]]))
+            ->assertSessionHasErrors('categoryIds.0');
     }
 
     public function test_states_persist_and_default_reaches_the_type(): void

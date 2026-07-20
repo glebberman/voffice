@@ -1,3 +1,4 @@
+import { AXES, CategoryManager, type CategoryRow } from '@/components/props-editor/CategoryManager';
 import { OrientationTabs } from '@/components/props-editor/OrientationTabs';
 import { SheetCropper } from '@/components/props-editor/SheetCropper';
 import { StateTabs } from '@/components/props-editor/StateTabs';
@@ -23,12 +24,15 @@ interface PropTypeRow {
     id: number;
     slug: string;
     label: string;
+    description: string;
     defaultState: string | null;
+    categoryIds: number[];
     orientations: OrientationRow[];
 }
 
 interface PropsPageProps extends SharedData {
     types: PropTypeRow[];
+    categories: CategoryRow[];
     sheets: string[];
     usage: Record<string, number>;
     errors: Record<string, string>;
@@ -37,7 +41,9 @@ interface PropsPageProps extends SharedData {
 interface Draft {
     slug: string;
     label: string;
+    description: string;
     defaultState: string | null;
+    categoryIds: number[];
     orientations: OrientationRow[];
 }
 
@@ -47,14 +53,18 @@ const byDir = (a: OrientationRow, b: OrientationRow): number => PROP_DIRS.indexO
 const emptyDraft = (sheet: string): Draft => ({
     slug: '',
     label: '',
+    description: '',
     defaultState: null,
+    categoryIds: [],
     orientations: [{ dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0, states: {} }],
 });
 
 const draftOf = (type: PropTypeRow): Draft => ({
     slug: type.slug,
     label: type.label,
+    description: type.description,
     defaultState: type.defaultState,
+    categoryIds: [...type.categoryIds],
     orientations: type.orientations.map((o) => ({ ...o, states: { ...o.states } })),
 });
 
@@ -84,7 +94,7 @@ function PropPreview({ orientation, fit }: { orientation: PropOrientation; fit?:
 }
 
 export default function PropsCatalogue() {
-    const { types, sheets, usage, errors } = usePage<PropsPageProps>().props;
+    const { types, categories, sheets, usage, errors } = usePage<PropsPageProps>().props;
 
     const [selectedId, setSelectedId] = useState<number | null>(types[0]?.id ?? null);
     const [draft, setDraft] = useState<Draft>(types[0] ? draftOf(types[0]) : emptyDraft(sheets[0] ?? ''));
@@ -193,6 +203,8 @@ export default function PropsCatalogue() {
         const payload = {
             slug: draft.slug,
             label: draft.label,
+            description: draft.description,
+            categoryIds: draft.categoryIds,
             defaultState: draft.defaultState,
             orientations: draft.orientations.map((o) => ({
                 dir: o.dir,
@@ -339,6 +351,51 @@ export default function PropsCatalogue() {
                             </div>
                         </div>
 
+                        <div className="mt-2">
+                            <Label className="text-xs">Описание для каталога</Label>
+                            <textarea
+                                className="border-input placeholder:text-muted-foreground mt-1 w-full rounded-md border bg-transparent px-3 py-1.5 text-xs shadow-xs outline-none"
+                                rows={2}
+                                value={draft.description}
+                                onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                                placeholder="Пара слов для карточки предмета"
+                            />
+                        </div>
+
+                        {/* группировки, как в Sims: предмет может состоять в нескольких категориях каждой оси */}
+                        {AXES.map(({ key, title }) => {
+                            const ofAxis = categories.filter((c) => c.axis === key);
+                            if (ofAxis.length === 0) {
+                                return null;
+                            }
+                            return (
+                                <div key={key} className="mt-2">
+                                    <Label className="text-xs">{title}</Label>
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                        {ofAxis.map((c) => (
+                                            <button
+                                                key={c.id}
+                                                type="button"
+                                                onClick={() =>
+                                                    setDraft((d) => ({
+                                                        ...d,
+                                                        categoryIds: d.categoryIds.includes(c.id)
+                                                            ? d.categoryIds.filter((id) => id !== c.id)
+                                                            : [...d.categoryIds, c.id],
+                                                    }))
+                                                }
+                                                className={`rounded-md border px-1.5 py-0.5 text-[11px] ${
+                                                    draft.categoryIds.includes(c.id) ? 'ring-primary ring-2' : 'text-muted-foreground'
+                                                }`}
+                                            >
+                                                {c.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+
                         <Button className="mt-3 w-full" size="sm" onClick={submit} disabled={incomplete}>
                             <Save className="size-3.5" />
                             {selectedId === null ? 'Добавить в каталог' : 'Сохранить'}
@@ -395,6 +452,8 @@ export default function PropsCatalogue() {
                             })}
                         </div>
                     </div>
+
+                    <CategoryManager categories={categories} />
                 </div>
             </div>
         </AppLayout>

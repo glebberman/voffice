@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\PropCategory;
 use App\Models\PropType;
 use App\Models\Room;
 use App\Support\JsonFile;
@@ -70,22 +71,32 @@ class ExportResourcesTest extends TestCase
     {
         // ровно тот случай, ради которого команда и заведена: предмет завели
         // через страницу каталога, в файл он не попал и исчез бы при db:seed
-        $type = PropType::create(['slug' => 'whiteboard', 'label' => 'Маркерная доска', 'default_state' => 'clean']);
+        $type = PropType::create([
+            'slug' => 'whiteboard', 'label' => 'Маркерная доска',
+            'description' => 'Доска для встреч', 'default_state' => 'clean',
+        ]);
         $type->orientations()->create([
             'dir' => 'south',
             'sheet' => 'office/Desk, Ornate.png',
             'sx' => 0, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 1,
             'states' => ['clean' => ['sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 64]],
         ]);
+        $type->categories()->attach(PropCategory::where('axis', 'purpose')->where('slug', 'work')->firstOrFail());
 
         $this->export()->assertSuccessful();
 
-        $items = $this->nested(JsonFile::read($this->to.'/props.json'), 'items');
+        $file = JsonFile::read($this->to.'/props.json');
+        // категории уезжают своей секцией — их читает сидер и каталог редактора
+        $this->assertSame('Рабочее место', $this->nested($this->nested($this->nested($file, 'categories'), 'purpose'), 'work')['label'] ?? null);
+
+        $items = $this->nested($file, 'items');
         $this->assertArrayHasKey('whiteboard', $items);
         $this->assertSame(
             [
                 'label' => 'Маркерная доска',
+                'description' => 'Доска для встреч',
                 'defaultState' => 'clean',
+                'purposes' => ['work'],
                 'orientations' => [
                     'south' => [
                         'sheet' => 'office/Desk, Ornate.png', 'sx' => 0, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 1,

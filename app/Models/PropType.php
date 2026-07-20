@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -14,13 +15,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * ориентации: имена общие для всех сторон типа, геометрия — от ориентации.
  * `default_state` — что рисуется по умолчанию; null = состояний нет.
  *
+ * Категории (две оси, many-to-many) и описание — витрина каталога в
+ * редакторе карт: карточка с картинкой, описанием и группировками.
+ *
  * @phpstan-type StateRegion array{sheet: string, sx: int, sy: int}
  * @phpstan-type OrientationSpec array{sheet: string, sx: int, sy: int, w: int, h: int, tall: int, states: array<string, StateRegion>}
- * @phpstan-type PropSpec array{label: string, defaultState: string|null, orientations: array<string, OrientationSpec>}
+ * @phpstan-type PropSpec array{label: string, description: string, defaultState: string|null, purposes: list<string>, roomKinds: list<string>, orientations: array<string, OrientationSpec>}
  */
 class PropType extends Model
 {
-    protected $fillable = ['slug', 'label', 'default_state'];
+    protected $fillable = ['slug', 'label', 'default_state', 'description'];
 
     /**
      * @return HasMany<PropOrientation, $this>
@@ -28,6 +32,28 @@ class PropType extends Model
     public function orientations(): HasMany
     {
         return $this->hasMany(PropOrientation::class);
+    }
+
+    /**
+     * @return BelongsToMany<PropCategory, $this>
+     */
+    public function categories(): BelongsToMany
+    {
+        return $this->belongsToMany(PropCategory::class);
+    }
+
+    /**
+     * Слоги категорий одной оси — в порядке sort, затем slug: так каталог и
+     * экспорт не зависят от порядка привязки.
+     *
+     * @return list<string>
+     */
+    public function categorySlugs(string $axis): array
+    {
+        $ofAxis = $this->categories->filter(fn (PropCategory $c): bool => $c->axis === $axis)->all();
+        usort($ofAxis, fn (PropCategory $a, PropCategory $b): int => [$a->sort, $a->slug] <=> [$b->sort, $b->slug]);
+
+        return array_map(fn (PropCategory $c): string => $c->slug, $ofAxis);
     }
 
     /**
@@ -44,7 +70,7 @@ class PropType extends Model
         // обычный цикл, а не keyBy()->map(): коллекция теряет форму значения,
         // и на выходе снова получается mixed
         $catalogue = [];
-        foreach (self::query()->with('orientations')->orderBy('id')->get() as $type) {
+        foreach (self::query()->with(['orientations', 'categories'])->orderBy('id')->get() as $type) {
             $orientations = [];
             foreach ($type->sortedOrientations() as $orientation) {
                 $orientations[$orientation->dir] = [
@@ -59,7 +85,10 @@ class PropType extends Model
             }
             $catalogue[$type->slug] = [
                 'label' => $type->label,
+                'description' => $type->description,
                 'defaultState' => $type->default_state,
+                'purposes' => $type->categorySlugs('purpose'),
+                'roomKinds' => $type->categorySlugs('room'),
                 'orientations' => $orientations,
             ];
         }
