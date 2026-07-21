@@ -1,9 +1,12 @@
-import { Application, Assets, Container, Graphics, GraphicsContext, Rectangle, Sprite, Text, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { cutoutPolygon, GHOST_ALPHA, SPRITE_TOP } from './cutout';
 import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type MapObjectType } from './map';
-import { propBaseRect, propOrientation, propSheetUrl, propSpec, propTallRect, withState } from './props';
+import { drawDoor } from './render/doors';
+import { COLORS } from './render/palette';
+import { loadPropTextures, resolvePropView } from './render/prop-sprites';
+import { drawChunk } from './render/tiles';
 import type { Direction, PlayerState, PlayerStatus } from './types';
 
 function sameRange(a: ChunkRange, b: ChunkRange): boolean {
@@ -33,34 +36,6 @@ const STATUS_COLORS: Record<PlayerStatus, number> = {
 };
 
 const REACTION_TTL_MS = 1600;
-
-const COLORS = {
-    floor: 0xede7dc,
-    floorAlt: 0xe7e0d3,
-    wall: 0x4a4458,
-    wallTop: 0x5d5570,
-    desk: 0xb08968,
-    deskTop: 0xc9a583,
-    kitchenFloor: 0xdce8e4,
-    counter: 0x8aafa5,
-    counterTop: 0xa3c4bb,
-    meetingCarpet: 0xdce0f0,
-    table: 0x7c6fae,
-    tableTop: 0x958ac2,
-    loungeRug: 0xf2ddd0,
-    sofa: 0xd98e73,
-    sofaTop: 0xe5a68e,
-    plantPot: 0xa9714b,
-    plant: 0x5fa867,
-    zoneLabel: 0x6b6478,
-    spotlightFloor: 0xf4e9c8,
-    spotlight: 0xffe08a,
-    doorFrame: 0x6b6478,
-    door: 0xa9714b,
-    doorLocked: 0x8f5a5a,
-    doorKnob: 0xf0e6d2,
-    doorLockedKnob: 0xffd166,
-};
 
 // насколько глушим то, куда персонажу не дойти
 const SHADOW_ALPHA = 0.82;
@@ -235,37 +210,28 @@ export class OfficeScene {
      */
     private drawProps(): void {
         for (const prop of this.map.props) {
-            const spec = propSpec(this.map.catalogue, prop.type);
-            const base = spec ? propOrientation(spec, prop.dir) : null;
-            if (!spec || !base) {
-                continue;
-            }
             // пока предметом никто не пользуется, он в состоянии по умолчанию;
             // живое переключение приедет вместе с prop_states
-            const orientation = withState(base, spec.defaultState);
+            const orientation = resolvePropView(this.map.catalogue, prop);
+            if (!orientation) {
+                continue;
+            }
 
-            const url = propSheetUrl(orientation);
-            Assets.load(url)
-                .then((texture: Texture) => {
+            loadPropTextures(orientation)
+                .then(({ base, tall }) => {
                     if (this.destroyed) {
                         return;
                     }
-                    texture.source.scaleMode = 'nearest';
 
-                    const base = propBaseRect(orientation);
-                    const baseSprite = new Sprite(
-                        new Texture({ source: texture.source, frame: new Rectangle(base.x, base.y, base.width, base.height) }),
-                    );
+                    const baseSprite = new Sprite(base);
                     baseSprite.position.set(prop.x * TILE, prop.y * TILE);
                     this.propBaseLayer.addChild(baseSprite);
 
-                    const tall = propTallRect(orientation);
                     if (!tall) {
                         return;
                     }
-                    const tallTexture = new Texture({ source: texture.source, frame: new Rectangle(tall.x, tall.y, tall.width, tall.height) });
                     const [node, ghost] = [this.overheadLayer, this.overheadGhost].map((layer) => {
-                        const sprite = new Sprite(tallTexture);
+                        const sprite = new Sprite(tall);
                         sprite.position.set(prop.x * TILE, (prop.y - orientation.tall) * TILE);
                         layer.addChild(sprite);
                         return sprite;
@@ -306,20 +272,7 @@ export class OfficeScene {
             if (!g) {
                 continue;
             }
-            const { closed, locked } = this.map.doorState(door.id);
-            g.clear();
-
-            // косяк: две стойки по бокам проёма, они видны всегда
-            g.rect(0, 0, 3, TILE).fill(COLORS.doorFrame);
-            g.rect(TILE - 3, 0, 3, TILE).fill(COLORS.doorFrame);
-
-            if (closed) {
-                g.rect(3, 0, TILE - 6, TILE).fill(locked ? COLORS.doorLocked : COLORS.door);
-                g.rect(3, 0, TILE - 6, 5).fill({ color: 0xffffff, alpha: 0.12 });
-                // ручка со стороны замка, чтобы было видно, откуда запирать
-                const knob = door.lock === 'north' ? 7 : door.lock === 'south' ? TILE - 7 : TILE / 2;
-                g.circle(TILE - 8, knob, 2.5).fill(locked ? COLORS.doorLockedKnob : COLORS.doorKnob);
-            }
+            drawDoor(g, door, this.map.doorState(door.id));
         }
     }
 
@@ -881,7 +834,9 @@ export class OfficeScene {
             for (let cx = range.x0; cx <= range.x1; cx++) {
                 const id = `${cx}:${cy}`;
                 if (!this.chunks.has(id)) {
-                    const { base, crown, ghost, crownTiles } = this.drawChunk(cx, cy);
+                    // верхушки не рисуем в доступной области: стена ближе к камере
+                    // не должна загораживать комнату, где стоит персонаж
+                    const { base, crown, ghost, crownTiles } = drawChunk(this.map, cx, cy, this.reachable);
                     added = true;
                     this.mapLayer.addChild(base);
                     this.overheadLayer.addChild(crown);
@@ -894,92 +849,6 @@ export class OfficeScene {
         if (added) {
             this.drawShadow(); // тень рисуется по видимым чанкам, а их стало больше
         }
-    }
-
-    /**
-     * Рисует один чанк карты (CHUNK_TILES × CHUNK_TILES тайлов).
-     * Возвращает две части: низ (под игроками) и верхушки стен (над ними).
-     * Верхушка и её полупрозрачная копия делят один GraphicsContext.
-     */
-    private drawChunk(cx: number, cy: number): { base: Graphics; crown: Graphics; ghost: Graphics; crownTiles: Set<number> } {
-        const g = new Graphics();
-        const crownContext = new GraphicsContext();
-        const crownTiles = new Set<number>();
-        const startX = cx * CHUNK_TILES;
-        const startY = cy * CHUNK_TILES;
-        const endX = Math.min(startX + CHUNK_TILES, this.map.width);
-        const endY = Math.min(startY + CHUNK_TILES, this.map.height);
-
-        for (let y = startY; y < endY; y++) {
-            for (let x = startX; x < endX; x++) {
-                const ch = this.map.rows[y][x];
-                const px = x * TILE;
-                const py = y * TILE;
-
-                // базовый пол под всеми тайлами
-                const baseFloor =
-                    ch === ':' || ch === 'K'
-                        ? COLORS.kitchenFloor
-                        : ch === ',' || ch === 'T'
-                          ? COLORS.meetingCarpet
-                          : ch === ';' || ch === 'S'
-                            ? COLORS.loungeRug
-                            : (x + y) % 2 === 0
-                              ? COLORS.floor
-                              : COLORS.floorAlt;
-                g.rect(px, py, TILE, TILE).fill(baseFloor);
-
-                // верхушка стены: рисуем её НАД клеткой со стеной, если сверху
-                // не стена. Клетка остаётся проходимой — за стеной можно пройти
-                // Верхушку не рисуем, если её клетка в доступном помещении:
-                // такая стена стоит ближе к камере и загораживает комнату, в
-                // которой персонаж и находится.
-                if (this.map.isWallCrown(x, y - 1) && y > 0 && !this.reachable.has((y - 1) * this.map.width + x)) {
-                    crownTiles.add((y - 1) * this.map.width + x);
-                    const cy2 = (y - 1) * TILE;
-                    crownContext.rect(px, cy2, TILE, TILE).fill(COLORS.wall);
-                    crownContext.rect(px, cy2, TILE, 7).fill(COLORS.wallTop);
-                    crownContext.rect(px, cy2 + TILE - 3, TILE, 3).fill({ color: 0x2b2733, alpha: 0.35 });
-                }
-
-                switch (ch) {
-                    case '#':
-                        g.rect(px, py, TILE, TILE).fill(COLORS.wall);
-                        g.rect(px, py, TILE, 6).fill(COLORS.wallTop);
-                        break;
-                    case 'D':
-                        g.roundRect(px + 2, py + 4, TILE - 4, TILE - 8, 4).fill(COLORS.desk);
-                        g.roundRect(px + 4, py + 6, TILE - 8, TILE - 16, 3).fill(COLORS.deskTop);
-                        break;
-                    case 'K':
-                        g.roundRect(px + 2, py + 2, TILE - 4, TILE - 4, 3).fill(COLORS.counter);
-                        g.roundRect(px + 4, py + 4, TILE - 8, TILE - 12, 2).fill(COLORS.counterTop);
-                        break;
-                    case 'T':
-                        g.roundRect(px + 1, py + 3, TILE - 2, TILE - 6, 5).fill(COLORS.table);
-                        g.roundRect(px + 3, py + 5, TILE - 6, TILE - 12, 4).fill(COLORS.tableTop);
-                        break;
-                    case 'S':
-                        g.roundRect(px + 2, py + 5, TILE - 4, TILE - 8, 6).fill(COLORS.sofa);
-                        g.roundRect(px + 4, py + 7, TILE - 8, TILE - 14, 4).fill(COLORS.sofaTop);
-                        break;
-                    case 'P':
-                        g.roundRect(px + 9, py + 16, 14, 12, 3).fill(COLORS.plantPot);
-                        g.circle(px + 16, py + 12, 9).fill(COLORS.plant);
-                        g.circle(px + 10, py + 16, 6).fill(COLORS.plant);
-                        g.circle(px + 22, py + 16, 6).fill(COLORS.plant);
-                        break;
-                    case '*':
-                        // spotlight-сцена: тёплый круг света
-                        g.rect(px, py, TILE, TILE).fill(COLORS.spotlightFloor);
-                        g.circle(px + TILE / 2, py + TILE / 2, TILE / 2 - 2).fill({ color: COLORS.spotlight, alpha: 0.5 });
-                        g.circle(px + TILE / 2, py + TILE / 2, TILE / 4).fill({ color: COLORS.spotlight, alpha: 0.7 });
-                        break;
-                }
-            }
-        }
-
-        return { base: g, crown: new Graphics(crownContext), ghost: new Graphics(crownContext), crownTiles };
     }
 
     setObjectHighlight(id: string | null): void {
