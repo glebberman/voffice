@@ -57,6 +57,7 @@ interface PlayerSprite {
     root: Container;
     charSprites: Sprite[];
     avatar: AvatarLayers | null;
+    lookGen: number; // поколение loadLook: применяется только последний вызов
     walkTime: number;
     frame: number;
     bubble: Container;
@@ -505,6 +506,7 @@ export class OfficeScene {
             root,
             charSprites: [],
             avatar: null,
+            lookGen: 0,
             walkTime: 0,
             frame: 0,
             bubble,
@@ -531,8 +533,13 @@ export class OfficeScene {
 
     // (пере)загрузка слоёв персонажа: асинхронно, между тенью и именем
     private loadLook(id: number, sprite: PlayerSprite, cfg?: AvatarConfig | null): void {
+        // Токен поколения: два loadLook могут завершиться не по порядку —
+        // холодная загрузка первого образа медленнее свежего setLook из кэша,
+        // и доехавший позже старый промис перезаписал бы новый вид. Побеждает
+        // последний вызов, остальные молча выбрасываются.
+        const gen = ++sprite.lookGen;
         void loadAvatar(id, cfg).then((layers) => {
-            if (this.destroyed || this.players.get(id) !== sprite || layers.length === 0) {
+            if (this.destroyed || this.players.get(id) !== sprite || sprite.lookGen !== gen || layers.length === 0) {
                 return;
             }
             for (const old of sprite.charSprites) {
@@ -592,6 +599,9 @@ export class OfficeScene {
         if (sprite.bubbleTimer) {
             clearTimeout(sprite.bubbleTimer);
         }
+        // маркеры locate висят на root и погибнут вместе с ним; забытая ссылка
+        // в pings уронила бы тикер на первом же кадре — и рендер целиком
+        this.pings = this.pings.filter((ping) => ping.node.parent !== sprite.root);
         sprite.root.destroy({ children: true });
         this.players.delete(id);
     }
@@ -672,6 +682,9 @@ export class OfficeScene {
         // прыгающие маркеры locate
         if (this.pings.length > 0) {
             this.pings = this.pings.filter((ping) => {
+                if (ping.node.destroyed) {
+                    return false; // хозяин маркера удалён вместе с ним
+                }
                 ping.age += deltaMS;
                 if (ping.age >= 3500) {
                     ping.node.destroy();
