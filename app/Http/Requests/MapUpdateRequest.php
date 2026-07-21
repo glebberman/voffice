@@ -125,7 +125,16 @@ class MapUpdateRequest extends FormRequest
             'map.spawn' => ['required', 'array'],
             'map.spawn.x' => ['required', 'integer', 'min:0'],
             'map.spawn.y' => ['required', 'integer', 'min:0'],
+            // зоны: прямоугольники помещений (переговорка/кухня/…); приватная
+            // зона отсекает чат снаружи, kind — тип помещения (задел под стили)
             'map.zones' => ['present', 'array'],
+            'map.zones.*.name' => ['required', 'string', 'max:60'],
+            'map.zones.*.x1' => ['required', 'integer', 'min:0'],
+            'map.zones.*.y1' => ['required', 'integer', 'min:0'],
+            'map.zones.*.x2' => ['required', 'integer', 'min:0'],
+            'map.zones.*.y2' => ['required', 'integer', 'min:0'],
+            'map.zones.*.isPrivate' => ['sometimes', 'boolean'],
+            'map.zones.*.kind' => ['sometimes', 'string', 'max:32'],
             'map.objects' => ['present', 'array'],
             'map.objects.*.id' => ['required', 'string', 'max:64'],
             'map.objects.*.type' => ['required', 'string', 'in:board,video,map,link'],
@@ -186,6 +195,22 @@ class MapUpdateRequest extends FormRequest
                 [$sx, $sy] = self::pointOf($this->input('map.spawn'));
                 if (! $inBounds($sx, $sy) || ! $walkable($sx, $sy)) {
                     $validator->errors()->add('map.spawn', 'Точка спавна должна быть на проходимой клетке');
+                }
+
+                // зона — прямоугольник в границах карты, углы не перевёрнуты
+                foreach ($this->mapList('zones') as $i => $zone) {
+                    if (! is_array($zone)) {
+                        continue;
+                    }
+                    $x1 = is_int($zone['x1'] ?? null) ? $zone['x1'] : -1;
+                    $y1 = is_int($zone['y1'] ?? null) ? $zone['y1'] : -1;
+                    $x2 = is_int($zone['x2'] ?? null) ? $zone['x2'] : -1;
+                    $y2 = is_int($zone['y2'] ?? null) ? $zone['y2'] : -1;
+                    if (! $inBounds($x1, $y1) || ! $inBounds($x2, $y2)) {
+                        $validator->errors()->add("map.zones.{$i}", 'Зона за пределами карты');
+                    } elseif ($x2 < $x1 || $y2 < $y1) {
+                        $validator->errors()->add("map.zones.{$i}", 'У зоны правый-нижний угол левее/выше левого-верхнего');
+                    }
                 }
 
                 foreach ($this->mapList('objects') as $i => $obj) {

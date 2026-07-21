@@ -1,5 +1,5 @@
 import { EditorScene, type RectPreview } from '@/game/editor-scene';
-import type { DoorData, MapObjectData, PortalData, PropData } from '@/game/map';
+import type { DoorData, MapObjectData, PortalData, PropData, Zone } from '@/game/map';
 import type { PropCatalogue } from '@/game/props';
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 
@@ -21,6 +21,8 @@ interface EditorCanvasProps {
     spawn: Tile;
     objects: MapObjectData[];
     portals: PortalData[];
+    zones: Zone[];
+    selectedZone: number | null;
     catalogue: PropCatalogue;
     rectPreview: RectPreview | null;
     panTool: boolean; // активен инструмент «рука»
@@ -47,6 +49,8 @@ export function EditorCanvas({
     spawn,
     objects,
     portals,
+    zones,
+    selectedZone,
     catalogue,
     rectPreview,
     panTool,
@@ -93,6 +97,7 @@ export function EditorCanvas({
     useEffect(() => sceneRef.current?.setProps(props), [props]);
     useEffect(() => sceneRef.current?.setDoors(doors), [doors]);
     useEffect(() => sceneRef.current?.setMarkers(spawn, objects, portals), [spawn, objects, portals]);
+    useEffect(() => sceneRef.current?.setZones(zones, selectedZone), [zones, selectedZone]);
     useEffect(() => sceneRef.current?.setRectPreview(rectPreview), [rectPreview]);
 
     // зум колесом — нативный слушатель: React onWheel пассивен, preventDefault не сработал бы

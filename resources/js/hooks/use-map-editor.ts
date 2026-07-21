@@ -1,4 +1,5 @@
 import type { EditorCanvasHandle, Tile } from '@/components/editor/EditorCanvas';
+import { zonePreset } from '@/editor/zone-presets';
 import type { RectPreview } from '@/game/editor-scene';
 import {
     fillRect,
@@ -11,12 +12,13 @@ import {
     type MapObjectData,
     type PortalData,
     type PropData,
+    type Zone,
 } from '@/game/map';
 import { propFits, propOrientation, propSpec, type PropCatalogue, type PropDir } from '@/game/props';
 import { router } from '@inertiajs/react';
 import { useRef, useState } from 'react';
 
-export type Tool = 'paint' | 'rect' | 'spawn' | 'pan' | 'prop' | 'door';
+export type Tool = 'paint' | 'rect' | 'spawn' | 'pan' | 'prop' | 'door' | 'zone';
 
 interface RoomInfo {
     slug: string;
@@ -38,6 +40,9 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     const [portals, setPortals] = useState<PortalData[]>(room.map.portals);
     const [props, setProps] = useState<PropData[]>(room.map.props ?? []);
     const [doors, setDoors] = useState<DoorData[]>(room.map.doors ?? []);
+    const [zones, setZones] = useState<Zone[]>(room.map.zones);
+    const [selectedZone, setSelectedZone] = useState<number | null>(null);
+    const [zoneKind, setZoneKind] = useState<string>('openspace'); // пресет для новых зон
     const [propType, setPropType] = useState<string>(Object.keys(catalogue)[0] ?? '');
     const [tool, setTool] = useState<Tool>('paint');
     const [brush, setBrush] = useState<string>('.');
@@ -100,9 +105,13 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         );
     };
 
-    // клик/протяжка по полю: EditorCanvas не знает про инструменты — знает хук
+    // клик/протяжка по полю: EditorCanvas не знает про инструменты — знает хук.
+    // Прямоугольник и область обводятся одинаково (rectPreview), различаются
+    // лишь тем, что делается на отпускании.
+    const dragsRect = tool === 'rect' || tool === 'zone';
+
     const onTileDown = (tile: Tile) => {
-        if (tool === 'rect') {
+        if (dragsRect) {
             rectStart.current = tile;
             setRectPreview({ x0: tile.x, y0: tile.y, x1: tile.x, y1: tile.y });
             return;
@@ -112,7 +121,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     };
 
     const onTileDrag = (tile: Tile) => {
-        if (tool === 'rect') {
+        if (dragsRect) {
             const start = rectStart.current;
             if (start) {
                 setRectPreview({ x0: start.x, y0: start.y, x1: tile.x, y1: tile.y });
@@ -125,8 +134,23 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     };
 
     const onTileUp = () => {
-        if (tool === 'rect' && rectPreview) {
-            setRows((prev) => fillRect(prev, rectPreview.x0, rectPreview.y0, rectPreview.x1, rectPreview.y1, brush));
+        if (rectPreview) {
+            if (tool === 'rect') {
+                setRows((prev) => fillRect(prev, rectPreview.x0, rectPreview.y0, rectPreview.x1, rectPreview.y1, brush));
+            } else if (tool === 'zone') {
+                const preset = zonePreset(zoneKind);
+                const zone: Zone = {
+                    name: preset.label,
+                    x1: Math.min(rectPreview.x0, rectPreview.x1),
+                    y1: Math.min(rectPreview.y0, rectPreview.y1),
+                    x2: Math.max(rectPreview.x0, rectPreview.x1),
+                    y2: Math.max(rectPreview.y0, rectPreview.y1),
+                    kind: preset.kind,
+                    ...(preset.isPrivate ? { isPrivate: true } : {}),
+                };
+                setZones((prev) => [...prev, zone]);
+                setSelectedZone(zones.length); // свежесозданную сразу подсвечиваем
+            }
         }
         rectStart.current = null;
         painting.current = false;
@@ -148,13 +172,16 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
                 return orientation ? propFits(orientation, p.x, p.y, w, h) : false;
             }),
         );
+        // зоны обрезаем по новым границам, вырожденные (углы за краем) убираем
+        setZones((prev) => prev.filter((z) => z.x1 < w && z.y1 < h).map((z) => ({ ...z, x2: Math.min(z.x2, w - 1), y2: Math.min(z.y2, h - 1) })));
+        setSelectedZone(null);
         setSizeDraft({ w, h });
     };
 
     const save = () => {
         setSaving(true);
         setErrors([]);
-        const map: MapData = { rows, spawn, zones: room.map.zones, objects, portals, props, doors };
+        const map: MapData = { rows, spawn, zones, objects, portals, props, doors };
         router.put(
             `/rooms/${room.slug}`,
             { name, map: map as unknown as Record<string, never> },
@@ -183,6 +210,12 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         setProps,
         doors,
         setDoors,
+        zones,
+        setZones,
+        selectedZone,
+        setSelectedZone,
+        zoneKind,
+        setZoneKind,
         width,
         height,
         // инструменты

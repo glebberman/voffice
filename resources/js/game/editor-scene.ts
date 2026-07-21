@@ -1,7 +1,8 @@
 import { clampOffset, EDITOR_ZOOM_DEFAULT, EDITOR_ZOOMS, screenToTile, zoomToCursor } from '@/editor/viewport';
+import { zonePreset } from '@/editor/zone-presets';
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
-import { TILE, type DoorData, type MapObjectData, type PortalData, type PropData } from './map';
+import { TILE, type DoorData, type MapObjectData, type PortalData, type PropData, type Zone } from './map';
 import type { PropCatalogue } from './props';
 import { loadPropTextures, resolvePropView } from './render/prop-sprites';
 import { drawChunk } from './render/tiles';
@@ -44,8 +45,12 @@ export class EditorScene {
     private propOutline = new Graphics(); // рамки оснований (видны сразу, до загрузки спрайтов)
     private doorLayer = new Container();
     private markerLayer = new Container(); // спавн, порталы, объекты
+    private zoneLayer = new Container(); // оверлей областей поверх всего, кроме курсора
     private hoverG = new Graphics();
     private rectG = new Graphics();
+
+    private zones: Zone[] = [];
+    private selectedZone: number | null = null;
 
     private rows: string[];
     private width: number;
@@ -110,6 +115,7 @@ export class EditorScene {
             this.propOutline,
             this.doorLayer,
             this.markerLayer,
+            this.zoneLayer,
             this.hoverG,
             this.rectG,
         );
@@ -263,6 +269,12 @@ export class EditorScene {
         }
     }
 
+    setZones(zones: Zone[], selected: number | null): void {
+        this.zones = zones;
+        this.selectedZone = selected;
+        this.drawZones();
+    }
+
     setHover(tile: Point | null): void {
         this.hoverTile = tile;
         this.drawHover();
@@ -308,6 +320,7 @@ export class EditorScene {
         this.clampCamera();
         this.applyView();
         this.updateChunks(); // содержимое чанков от масштаба не зависит — только их набор
+        this.drawZones();
         this.drawHover();
         this.drawRect();
     }
@@ -426,6 +439,34 @@ export class EditorScene {
 
     private tileAt(x: number, y: number): string {
         return x < 0 || y < 0 || x >= this.width || y >= this.height ? '#' : this.rows[y][x];
+    }
+
+    private drawZones(): void {
+        for (const c of this.zoneLayer.removeChildren()) {
+            c.destroy();
+        }
+        this.zones.forEach((zone, i) => {
+            const preset = zonePreset(zone.kind);
+            // нормализуем углы: перевёрнутый прямоугольник рисуем как его габарит
+            const x = Math.min(zone.x1, zone.x2) * TILE;
+            const y = Math.min(zone.y1, zone.y2) * TILE;
+            const w = (Math.abs(zone.x2 - zone.x1) + 1) * TILE;
+            const h = (Math.abs(zone.y2 - zone.y1) + 1) * TILE;
+            const selected = i === this.selectedZone;
+
+            const g = new Graphics();
+            g.rect(x, y, w, h)
+                .fill({ color: preset.color, alpha: selected ? 0.28 : 0.16 })
+                .stroke({ width: (selected ? 3 : 2) / this.scale, color: preset.color, alpha: 0.9 });
+            this.zoneLayer.addChild(g);
+
+            const label = new Text({
+                text: `${zone.name}${zone.isPrivate ? ' 🔒' : ''}`,
+                style: { fontFamily: 'Instrument Sans, sans-serif', fontSize: 11, fontWeight: '700', fill: preset.color },
+            });
+            label.position.set(x + 3, y + 2);
+            this.zoneLayer.addChild(label);
+        });
     }
 
     private drawHover(): void {

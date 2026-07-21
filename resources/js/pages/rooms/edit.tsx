@@ -6,6 +6,7 @@ import { PortalsPanel } from '@/components/editor/PortalsPanel';
 import { PropsPanel } from '@/components/editor/PropsPanel';
 import { TilePanel } from '@/components/editor/TilePanel';
 import { ToolBar } from '@/components/editor/ToolBar';
+import { ZonesPanel } from '@/components/editor/ZonesPanel';
 import { Button } from '@/components/ui/button';
 import { type MapData } from '@/game/map';
 import { type PropCatalogue } from '@/game/props';
@@ -53,6 +54,8 @@ export default function RoomEdit() {
                         spawn={ed.spawn}
                         objects={ed.objects}
                         portals={ed.portals}
+                        zones={ed.zones}
+                        selectedZone={ed.selectedZone}
                         catalogue={propTypes}
                         rectPreview={ed.rectPreview}
                         panTool={ed.tool === 'pan'}
@@ -84,6 +87,20 @@ export default function RoomEdit() {
                         sizeDraft={ed.sizeDraft}
                         onSize={ed.setSizeDraft}
                         onApplyResize={ed.applyResize}
+                    />
+                    <ZonesPanel
+                        zones={ed.zones}
+                        selected={ed.selectedZone}
+                        zoneKind={ed.zoneKind}
+                        tool={ed.tool}
+                        width={ed.width}
+                        height={ed.height}
+                        onPickPreset={(kind) => {
+                            ed.setZoneKind(kind);
+                            ed.setTool('zone');
+                        }}
+                        onSelect={ed.setSelectedZone}
+                        onChange={ed.setZones}
                     />
                     <DoorsPanel doors={ed.doors} width={ed.width} height={ed.height} onChange={ed.setDoors} />
                     <PropsPanel

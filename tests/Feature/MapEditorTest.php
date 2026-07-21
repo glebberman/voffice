@@ -135,6 +135,34 @@ class MapEditorTest extends TestCase
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $badPortal])->assertSessionHasErrors('map.portals.0.to');
     }
 
+    public function test_zones_are_saved_and_validated(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // корректная зона с типом и приватностью сохраняется
+        $ok = $this->validMap();
+        $ok['zones'] = [['name' => 'Переговорка', 'x1' => 1, 'y1' => 1, 'x2' => 3, 'y2' => 3, 'isPrivate' => true, 'kind' => 'meeting']];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $ok])->assertRedirect('/rooms/office');
+        $saved = Room::where('slug', 'office')->firstOrFail()->map['zones'][0] ?? [];
+        $this->assertSame('meeting', $saved['kind'] ?? null);
+        $this->assertTrue($saved['isPrivate'] ?? false);
+
+        // зона за границей карты
+        $oob = $this->validMap();
+        $oob['zones'] = [['name' => 'Z', 'x1' => 1, 'y1' => 1, 'x2' => 99, 'y2' => 2]];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $oob])->assertSessionHasErrors('map.zones.0');
+
+        // перевёрнутый прямоугольник
+        $flipped = $this->validMap();
+        $flipped['zones'] = [['name' => 'Z', 'x1' => 3, 'y1' => 3, 'x2' => 1, 'y2' => 1]];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $flipped])->assertSessionHasErrors('map.zones.0');
+
+        // зона без имени
+        $noName = $this->validMap();
+        $noName['zones'] = [['x1' => 1, 'y1' => 1, 'x2' => 2, 'y2' => 2]];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $noName])->assertSessionHasErrors('map.zones.0.name');
+    }
+
     public function test_props_are_saved_and_validated(): void
     {
         $admin = User::factory()->admin()->create();
