@@ -1,7 +1,19 @@
 import { Graphics, GraphicsContext } from 'pixi.js';
 import { CHUNK_TILES } from '../camera';
-import { TILE, type GameMap } from '../map';
+import { TILE } from '../map';
 import { COLORS } from './palette';
+
+/**
+ * Минимум, нужный для отрисовки тайлов: сетка символов, её размеры и признак
+ * верхушки стены. `GameMap` этому удовлетворяет структурно (игра), а редактор
+ * собирает такой источник из «сырых» рядов, не строя полный `makeMap`.
+ */
+export interface TileSource {
+    rows: string[];
+    width: number;
+    height: number;
+    isWallCrown(x: number, y: number): boolean;
+}
 
 /**
  * Части одного чанка: низ (пол и мебель — под игроками), верхушки стен (над
@@ -23,7 +35,7 @@ export interface ChunkParts {
  * доступная персонажу область (стена ближе к камере не должна загораживать
  * комнату, где он стоит). Редактор передаёт null и видит все верхушки.
  */
-export function drawChunk(map: GameMap, cx: number, cy: number, skipCrown: ReadonlySet<number> | null): ChunkParts {
+export function drawChunk(map: TileSource, cx: number, cy: number, skipCrown: ReadonlySet<number> | null): ChunkParts {
     const g = new Graphics();
     const crownContext = new GraphicsContext();
     const crownTiles = new Set<number>();

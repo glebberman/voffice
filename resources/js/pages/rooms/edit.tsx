@@ -1,7 +1,9 @@
+import { EditorCanvas, type EditorCanvasHandle, type Tile } from '@/components/editor/EditorCanvas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { RectPreview } from '@/game/editor-scene';
 import {
     fillRect,
     isWalkableChar,
@@ -18,23 +20,13 @@ import {
     type PortalData,
     type PropData,
 } from '@/game/map';
-import {
-    PROP_DIR_LABEL,
-    propDirs,
-    propFits,
-    propOrientation,
-    propSheetUrl,
-    propSpec,
-    withState,
-    type PropCatalogue,
-    type PropDir,
-} from '@/game/props';
+import { PROP_DIR_LABEL, propDirs, propFits, propOrientation, propSpec, type PropCatalogue, type PropDir } from '@/game/props';
 import { TILE_COLOR, TILE_LABEL } from '@/game/tile-colors';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Armchair, DoorOpen, Hand, Plus, Save, Square, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 interface RoomInfo {
     id: number;
@@ -58,9 +50,6 @@ const OBJECT_TYPES = [
     { value: 'link', label: 'Ссылка' },
 ] as const;
 
-// масштабы: от обзора всей большой карты до комфортного рисования
-const ZOOM_LEVELS = [3, 5, 8, 12, 16, 22, 32];
-
 export default function RoomEdit() {
     const { room, rooms, propTypes } = usePage<EditProps>().props;
     const propKeys = Object.keys(propTypes);
@@ -76,204 +65,19 @@ export default function RoomEdit() {
     const [propType, setPropType] = useState<string>(propKeys[0] ?? '');
     const [tool, setTool] = useState<Tool>('paint');
     const [brush, setBrush] = useState<string>('.');
-    const [zoom, setZoom] = useState(5); // индекс в ZOOM_LEVELS
-    const [pan, setPan] = useState({ x: 0, y: 0 });
-    const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
-    const [rectPreview, setRectPreview] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+    const [hover, setHover] = useState<Tile | null>(null);
+    const [rectPreview, setRectPreview] = useState<RectPreview | null>(null);
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState<string[]>([]);
     const [sizeDraft, setSizeDraft] = useState({ w: room.map.rows[0].length, h: room.map.rows.length });
 
-    const sheetsRef = useRef<Map<string, HTMLImageElement>>(new Map());
-    const [sheetsReady, setSheetsReady] = useState(0);
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const hostRef = useRef<HTMLDivElement | null>(null);
-    const [canvasSize, setCanvasSize] = useState({ width: 800, height: 560 });
-    const drag = useRef<{ mode: 'paint' | 'rect' | 'pan'; startX: number; startY: number; panX: number; panY: number } | null>(null);
+    const editorRef = useRef<EditorCanvasHandle | null>(null);
+    // якорь прямоугольника и флаг «сейчас рисуем кистью» — между down и up
+    const rectStart = useRef<Tile | null>(null);
+    const painting = useRef(false);
 
-    const cell = ZOOM_LEVELS[zoom];
     const width = rows[0]?.length ?? 0;
     const height = rows.length;
-
-    // канвас занимает контейнер; на большой карте это окно, а не вся карта
-    useEffect(() => {
-        const host = hostRef.current;
-        if (!host) {
-            return;
-        }
-        const apply = () => {
-            const rect = host.getBoundingClientRect();
-            setCanvasSize({ width: Math.max(320, Math.round(rect.width)), height: Math.max(240, Math.round(rect.height)) });
-        };
-        apply();
-        const observer = new ResizeObserver(apply);
-        observer.observe(host);
-        return () => observer.disconnect();
-    }, []);
-
-    // спрайтшиты предметов грузим один раз; sheetsReady будит перерисовку
-    useEffect(() => {
-        const load = (url: string) => {
-            if (sheetsRef.current.has(url)) {
-                return;
-            }
-            const img = new Image();
-            img.onload = () => setSheetsReady((n) => n + 1);
-            img.src = url;
-            sheetsRef.current.set(url, img);
-        };
-        for (const spec of Object.values(propTypes)) {
-            for (const orientation of Object.values(spec?.orientations ?? {})) {
-                load(propSheetUrl(orientation));
-                for (const state of Object.values(orientation.states ?? {})) {
-                    if (state) {
-                        load(propSheetUrl(state));
-                    }
-                }
-            }
-        }
-    }, [propTypes]);
-
-    const toTile = useCallback(
-        (clientX: number, clientY: number) => {
-            const canvas = canvasRef.current;
-            if (!canvas) {
-                return null;
-            }
-            const rect = canvas.getBoundingClientRect();
-            const x = Math.floor((clientX - rect.left + pan.x) / cell);
-            const y = Math.floor((clientY - rect.top + pan.y) / cell);
-            return x >= 0 && y >= 0 && x < width && y < height ? { x, y } : null;
-        },
-        [cell, pan, width, height],
-    );
-
-    // отрисовка: только видимые клетки, поэтому размер карты не влияет на скорость
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext('2d');
-        if (!canvas || !ctx) {
-            return;
-        }
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = canvasSize.width * dpr;
-        canvas.height = canvasSize.height * dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-        ctx.fillStyle = '#37323f';
-        ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
-
-        const x0 = Math.max(0, Math.floor(pan.x / cell));
-        const y0 = Math.max(0, Math.floor(pan.y / cell));
-        const x1 = Math.min(width - 1, Math.ceil((pan.x + canvasSize.width) / cell));
-        const y1 = Math.min(height - 1, Math.ceil((pan.y + canvasSize.height) / cell));
-
-        for (let y = y0; y <= y1; y++) {
-            const row = rows[y];
-            for (let x = x0; x <= x1; x++) {
-                ctx.fillStyle = TILE_COLOR[row[x]] ?? '#000';
-                ctx.fillRect(Math.round(x * cell - pan.x), Math.round(y * cell - pan.y), cell, cell);
-            }
-        }
-
-        // сетка — только когда клетки достаточно крупные
-        if (cell >= 12) {
-            ctx.strokeStyle = 'rgba(0,0,0,0.07)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            for (let x = x0; x <= x1 + 1; x++) {
-                const px = Math.round(x * cell - pan.x) + 0.5;
-                ctx.moveTo(px, 0);
-                ctx.lineTo(px, canvasSize.height);
-            }
-            for (let y = y0; y <= y1 + 1; y++) {
-                const py = Math.round(y * cell - pan.y) + 0.5;
-                ctx.moveTo(0, py);
-                ctx.lineTo(canvasSize.width, py);
-            }
-            ctx.stroke();
-        }
-
-        // предметы: спрайт занимает основание + высокую часть над ним;
-        // рисуем состояние по умолчанию — как в игре
-        ctx.imageSmoothingEnabled = false;
-        for (const prop of props) {
-            const spec = propSpec(propTypes, prop.type);
-            const resolved = spec ? propOrientation(spec, prop.dir) : null;
-            const orientation = spec && resolved ? withState(resolved, spec.defaultState) : null;
-            if (!orientation) {
-                continue;
-            }
-            const img = sheetsRef.current.get(propSheetUrl(orientation));
-            const dx = prop.x * cell - pan.x;
-            const dy = (prop.y - orientation.tall) * cell - pan.y;
-            const dw = orientation.w * cell;
-            const dh = (orientation.h + orientation.tall) * cell;
-            if (img?.complete && img.naturalWidth > 0) {
-                ctx.drawImage(img, orientation.sx, orientation.sy, orientation.w * 32, (orientation.h + orientation.tall) * 32, dx, dy, dw, dh);
-            } else {
-                ctx.fillStyle = 'rgba(124, 111, 174, 0.6)';
-                ctx.fillRect(dx, dy, dw, dh);
-            }
-            // основание (то, что блокирует проход) подсвечиваем рамкой
-            ctx.strokeStyle = 'rgba(43, 39, 51, 0.45)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(prop.x * cell - pan.x + 0.5, prop.y * cell - pan.y + 0.5, orientation.w * cell - 1, orientation.h * cell - 1);
-        }
-
-        // двери: рамка на клетке, а точка показывает сторону, где висит замок
-        for (const d of doors) {
-            if (d.x < x0 - 1 || d.x > x1 + 1 || d.y < y0 - 1 || d.y > y1 + 1) {
-                continue;
-            }
-            const dx = d.x * cell - pan.x;
-            const dy = d.y * cell - pan.y;
-            ctx.strokeStyle = d.lock ? '#b45309' : '#6b6478';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(dx + 1, dy + 1, cell - 2, cell - 2);
-            if (d.lock) {
-                ctx.fillStyle = '#b45309';
-                const lx = d.lock === 'west' ? dx + 4 : d.lock === 'east' ? dx + cell - 4 : dx + cell / 2;
-                const ly = d.lock === 'north' ? dy + 4 : d.lock === 'south' ? dy + cell - 4 : dy + cell / 2;
-                ctx.beginPath();
-                ctx.arc(lx, ly, Math.max(2, cell / 10), 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
-
-        // маркеры рисуются обходом самих массивов — без поиска по каждой клетке
-        const marker = (x: number, y: number, glyph: string) => {
-            if (x < x0 - 1 || x > x1 + 1 || y < y0 - 1 || y > y1 + 1) {
-                return;
-            }
-            ctx.font = `${Math.max(8, Math.min(cell, 20))}px sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(glyph, x * cell - pan.x + cell / 2, y * cell - pan.y + cell / 2);
-        };
-        for (const portal of portals) {
-            marker(portal.x, portal.y, '🌀');
-        }
-        for (const obj of objects) {
-            marker(obj.x, obj.y, '📌');
-        }
-        ctx.strokeStyle = '#22c55e';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(spawn.x * cell - pan.x + 1, spawn.y * cell - pan.y + 1, cell - 2, cell - 2);
-        marker(spawn.x, spawn.y, '⚑');
-
-        // предпросмотр прямоугольника
-        if (rectPreview) {
-            const left = Math.min(rectPreview.x0, rectPreview.x1);
-            const top = Math.min(rectPreview.y0, rectPreview.y1);
-            const w = Math.abs(rectPreview.x1 - rectPreview.x0) + 1;
-            const h = Math.abs(rectPreview.y1 - rectPreview.y0) + 1;
-            ctx.fillStyle = 'rgba(255, 201, 20, 0.35)';
-            ctx.fillRect(left * cell - pan.x, top * cell - pan.y, w * cell, h * cell);
-            ctx.strokeStyle = '#ffc914';
-            ctx.strokeRect(left * cell - pan.x, top * cell - pan.y, w * cell, h * cell);
-        }
-    }, [rows, spawn, objects, portals, props, doors, propTypes, sheetsReady, cell, pan, canvasSize, rectPreview, width, height]);
 
     const applyTile = (x: number, y: number) => {
         if (tool === 'spawn') {
@@ -320,82 +124,37 @@ export default function RoomEdit() {
         );
     };
 
-    const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-        try {
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        } catch {
-            // указателя может не быть (синтетические события) — рисованию не мешает
-        }
-        // средняя кнопка или инструмент «рука» — панорамирование
-        if (e.button === 1 || tool === 'pan') {
-            drag.current = { mode: 'pan', startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
-            return;
-        }
-        const tile = toTile(e.clientX, e.clientY);
-        if (!tile) {
-            return;
-        }
+    // клик/протяжка по полю: инструмент решает EditorCanvas не знает — знает страница
+    const onTileDown = (tile: Tile) => {
         if (tool === 'rect') {
-            drag.current = { mode: 'rect', startX: tile.x, startY: tile.y, panX: 0, panY: 0 };
+            rectStart.current = tile;
             setRectPreview({ x0: tile.x, y0: tile.y, x1: tile.x, y1: tile.y });
             return;
         }
-        if (tool === 'prop' || tool === 'spawn') {
-            applyTile(tile.x, tile.y);
-            return;
-        }
-        drag.current = { mode: 'paint', startX: tile.x, startY: tile.y, panX: 0, panY: 0 };
+        painting.current = tool === 'paint';
         applyTile(tile.x, tile.y);
     };
 
-    const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-        const state = drag.current;
-        if (state?.mode === 'pan') {
-            setPan({
-                x: clampPan(state.panX - (e.clientX - state.startX), width * cell, canvasSize.width),
-                y: clampPan(state.panY - (e.clientY - state.startY), height * cell, canvasSize.height),
-            });
+    const onTileDrag = (tile: Tile) => {
+        if (tool === 'rect') {
+            const start = rectStart.current;
+            if (start) {
+                setRectPreview({ x0: start.x, y0: start.y, x1: tile.x, y1: tile.y });
+            }
             return;
         }
-
-        const tile = toTile(e.clientX, e.clientY);
-        setHover(tile);
-        if (!tile || !state) {
-            return;
-        }
-        if (state.mode === 'rect') {
-            setRectPreview({ x0: state.startX, y0: state.startY, x1: tile.x, y1: tile.y });
-        } else {
+        if (painting.current) {
             applyTile(tile.x, tile.y);
         }
     };
 
-    const onPointerUp = () => {
-        const state = drag.current;
-        if (state?.mode === 'rect' && rectPreview) {
+    const onTileUp = () => {
+        if (tool === 'rect' && rectPreview) {
             setRows((prev) => fillRect(prev, rectPreview.x0, rectPreview.y0, rectPreview.x1, rectPreview.y1, brush));
         }
+        rectStart.current = null;
+        painting.current = false;
         setRectPreview(null);
-        drag.current = null;
-    };
-
-    const onWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-        const next = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, zoom + (e.deltaY > 0 ? -1 : 1)));
-        if (next === zoom) {
-            return;
-        }
-        // сохраняем точку под курсором на месте
-        const rect = e.currentTarget.getBoundingClientRect();
-        const cursorX = e.clientX - rect.left;
-        const cursorY = e.clientY - rect.top;
-        const worldX = (pan.x + cursorX) / cell;
-        const worldY = (pan.y + cursorY) / cell;
-        const nextCell = ZOOM_LEVELS[next];
-        setZoom(next);
-        setPan({
-            x: clampPan(worldX * nextCell - cursorX, width * nextCell, canvasSize.width),
-            y: clampPan(worldY * nextCell - cursorY, height * nextCell, canvasSize.height),
-        });
     };
 
     const applyResize = () => {
@@ -443,39 +202,35 @@ export default function RoomEdit() {
         >
             <Head title={`Редактор — ${room.name}`} />
             <div className="flex h-full flex-1 flex-col gap-4 p-4 lg:flex-row">
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                    {/* канвас — абсолютный слой: иначе его явная ширина раздувает
-                        разметку, которую мы же и измеряем (петля обратной связи) */}
-                    <div
-                        ref={hostRef}
-                        className="border-sidebar-border/70 dark:border-sidebar-border relative min-h-[420px] w-full flex-1 overflow-hidden rounded-xl border"
-                    >
-                        <canvas
-                            ref={canvasRef}
-                            style={{ touchAction: 'none' }}
-                            className={`absolute inset-0 h-full w-full ${tool === 'pan' ? 'cursor-grab' : 'cursor-crosshair'}`}
-                            onPointerDown={onPointerDown}
-                            onPointerMove={onPointerMove}
-                            onPointerUp={onPointerUp}
-                            onPointerLeave={() => {
-                                setHover(null);
-                                onPointerUp();
-                            }}
-                            onWheel={onWheel}
-                            onContextMenu={(e) => e.preventDefault()}
-                        />
-                    </div>
+                {/* поле фиксированной высоты, закреплено — длинные панели скроллятся рядом */}
+                <div className="flex min-w-0 flex-1 flex-col gap-2 lg:sticky lg:top-4 lg:self-start">
+                    <EditorCanvas
+                        ref={editorRef}
+                        rows={rows}
+                        props={props}
+                        doors={doors}
+                        spawn={spawn}
+                        objects={objects}
+                        portals={portals}
+                        catalogue={propTypes}
+                        rectPreview={rectPreview}
+                        panTool={tool === 'pan'}
+                        onTileDown={onTileDown}
+                        onTileDrag={onTileDrag}
+                        onTileUp={onTileUp}
+                        onHover={setHover}
+                    />
                     {/* строка статуса заменяет per-cell тултипы, которых нет у канваса */}
                     <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
                         <span>
                             Карта {width}×{height}
                         </span>
-                        {hover && (
+                        {hover && rows[hover.y]?.[hover.x] && (
                             <span>
                                 ({hover.x}, {hover.y}) — {TILE_LABEL[rows[hover.y][hover.x]] ?? rows[hover.y][hover.x]}
                             </span>
                         )}
-                        <span className="ml-auto">Колесо — зум · средняя кнопка или «рука» — сдвиг</span>
+                        <span className="ml-auto">Колесо — зум · пробел, средняя кнопка или «рука» — сдвиг</span>
                     </div>
                 </div>
 
@@ -538,15 +293,10 @@ export default function RoomEdit() {
                                 <Hand className="size-3.5" />
                             </Button>
                             <span className="ml-auto flex items-center gap-1">
-                                <Button size="icon" variant="outline" className="size-8" onClick={() => setZoom((z) => Math.max(0, z - 1))}>
+                                <Button size="icon" variant="outline" className="size-8" onClick={() => editorRef.current?.zoomOut()}>
                                     <ZoomOut className="size-3.5" />
                                 </Button>
-                                <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="size-8"
-                                    onClick={() => setZoom((z) => Math.min(ZOOM_LEVELS.length - 1, z + 1))}
-                                >
+                                <Button size="icon" variant="outline" className="size-8" onClick={() => editorRef.current?.zoomIn()}>
                                     <ZoomIn className="size-3.5" />
                                 </Button>
                             </span>
@@ -891,11 +641,6 @@ export default function RoomEdit() {
             </div>
         </AppLayout>
     );
-}
-
-function clampPan(value: number, contentPx: number, viewportPx: number): number {
-    const max = Math.max(0, contentPx - viewportPx);
-    return Math.max(0, Math.min(max, value));
 }
 
 function ListEditor({ title, onAdd, children }: { title: string; onAdd: () => void; children: React.ReactNode }) {
