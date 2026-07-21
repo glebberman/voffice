@@ -1,9 +1,9 @@
+import { CataloguePanel, type PropCategoryInfo } from '@/components/editor/CataloguePanel';
 import { DoorsPanel } from '@/components/editor/DoorsPanel';
 import { EditorCanvas } from '@/components/editor/EditorCanvas';
 import { MapSettingsPanel } from '@/components/editor/MapSettingsPanel';
 import { ObjectsPanel } from '@/components/editor/ObjectsPanel';
 import { PortalsPanel } from '@/components/editor/PortalsPanel';
-import { PropsPanel } from '@/components/editor/PropsPanel';
 import { TilePanel } from '@/components/editor/TilePanel';
 import { ToolBar } from '@/components/editor/ToolBar';
 import { ZonesPanel } from '@/components/editor/ZonesPanel';
@@ -28,10 +28,11 @@ interface EditProps extends SharedData {
     room: RoomInfo;
     rooms: { slug: string; name: string }[];
     propTypes: PropCatalogue;
+    propCategories: PropCategoryInfo[];
 }
 
 export default function RoomEdit() {
-    const { room, rooms, propTypes } = usePage<EditProps>().props;
+    const { room, rooms, propTypes, propCategories } = usePage<EditProps>().props;
     const ed = useMapEditor(room, propTypes);
 
     return (
@@ -58,6 +59,8 @@ export default function RoomEdit() {
                         selectedZone={ed.selectedZone}
                         catalogue={propTypes}
                         rectPreview={ed.rectPreview}
+                        propGhost={ed.propGhost}
+                        propSelection={ed.propSelection}
                         panTool={ed.tool === 'pan'}
                         onTileDown={ed.onTileDown}
                         onTileDrag={ed.onTileDrag}
@@ -103,18 +106,18 @@ export default function RoomEdit() {
                         onChange={ed.setZones}
                     />
                     <DoorsPanel doors={ed.doors} width={ed.width} height={ed.height} onChange={ed.setDoors} />
-                    <PropsPanel
-                        props={ed.props}
+                    <CataloguePanel
                         catalogue={propTypes}
-                        propType={ed.propType}
-                        tool={ed.tool}
+                        categories={propCategories}
+                        props={ed.props}
+                        placingType={ed.placing?.type ?? null}
+                        selected={ed.selectedProp}
                         width={ed.width}
                         height={ed.height}
-                        onPick={(type) => {
-                            ed.setPropType(type);
-                            ed.setTool('prop');
-                        }}
+                        onPick={ed.pickCatalog}
+                        onSelect={ed.setSelectedProp}
                         onRotate={ed.rotateProp}
+                        onRemove={ed.removeProp}
                         onChange={ed.setProps}
                     />
                     <ObjectsPanel objects={ed.objects} spawn={ed.spawn} width={ed.width} height={ed.height} onChange={ed.setObjects} />

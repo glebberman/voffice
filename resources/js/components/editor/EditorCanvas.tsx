@@ -1,4 +1,4 @@
-import { EditorScene, type RectPreview } from '@/game/editor-scene';
+import { EditorScene, type PropGhostView, type PropSelectionView, type RectPreview } from '@/game/editor-scene';
 import type { DoorData, MapObjectData, PortalData, PropData, Zone } from '@/game/map';
 import type { PropCatalogue } from '@/game/props';
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
@@ -6,6 +6,9 @@ import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 export interface EditorCanvasHandle {
     zoomIn: () => void;
     zoomOut: () => void;
+    // тайл под экранной точкой — нужен, когда перенос из каталога отпускают над
+    // полем (pointerup идёт мимо канваса, у него нет своего тайла события)
+    screenToTile: (clientX: number, clientY: number) => Tile | null;
 }
 
 export interface Tile {
@@ -25,6 +28,8 @@ interface EditorCanvasProps {
     selectedZone: number | null;
     catalogue: PropCatalogue;
     rectPreview: RectPreview | null;
+    propGhost: PropGhostView | null;
+    propSelection: PropSelectionView | null;
     panTool: boolean; // активен инструмент «рука»
     onTileDown: (tile: Tile) => void;
     onTileDrag: (tile: Tile) => void;
@@ -53,6 +58,8 @@ export function EditorCanvas({
     selectedZone,
     catalogue,
     rectPreview,
+    propGhost,
+    propSelection,
     panTool,
     onTileDown,
     onTileDrag,
@@ -99,6 +106,8 @@ export function EditorCanvas({
     useEffect(() => sceneRef.current?.setMarkers(spawn, objects, portals), [spawn, objects, portals]);
     useEffect(() => sceneRef.current?.setZones(zones, selectedZone), [zones, selectedZone]);
     useEffect(() => sceneRef.current?.setRectPreview(rectPreview), [rectPreview]);
+    useEffect(() => sceneRef.current?.setPropGhost(propGhost), [propGhost]);
+    useEffect(() => sceneRef.current?.setPropSelection(propSelection), [propSelection]);
 
     // зум колесом — нативный слушатель: React onWheel пассивен, preventDefault не сработал бы
     useEffect(() => {
@@ -148,6 +157,7 @@ export function EditorCanvas({
         () => ({
             zoomIn: () => sceneRef.current?.zoomButton(1),
             zoomOut: () => sceneRef.current?.zoomButton(-1),
+            screenToTile: (clientX: number, clientY: number) => sceneRef.current?.screenToTile(clientX, clientY) ?? null,
         }),
         [],
     );

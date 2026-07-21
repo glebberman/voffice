@@ -1,5 +1,7 @@
 import { makeMap, type MapData } from '@/game/map';
 import {
+    nextPropDir,
+    propAt,
     propBaseRect,
     propDirs,
     propFits,
@@ -150,6 +152,17 @@ describe('ориентации', () => {
         expect(propDirs(twoSided)).toEqual(['south', 'east']);
     });
 
+    it('nextPropDir крутит по доступным сторонам и заворачивается', () => {
+        expect(nextPropDir(twoSided, 'south')).toBe('east');
+        expect(nextPropDir(twoSided, 'east')).toBe('south'); // цикл замкнулся
+        expect(nextPropDir(twoSided, undefined)).toBe('east'); // undefined = south → следующая
+    });
+
+    it('nextPropDir у односторонней спеки возвращает ту же сторону', () => {
+        const oneSided: PropSpec = { label: 'Урна', orientations: { south: twoSided.orientations.south } };
+        expect(nextPropDir(oneSided, 'south')).toBe('south');
+    });
+
     it('повёрнутый предмет блокирует клетки своей ориентации', () => {
         const catalogue: PropCatalogue = { table: twoSided };
         const map = makeMap(baseMap([{ id: 'p', type: 'table', x: 2, y: 2, dir: 'east' }]), catalogue);
@@ -158,6 +171,43 @@ describe('ориентации', () => {
         expect(map.isWalkable(2, 3)).toBe(false);
         expect(map.isWalkable(3, 2)).toBe(true); // а не 4×1 вправо, как у south
         expect(map.isOverhead(2, 1)).toBe(false); // у east нет части в воздухе
+    });
+});
+
+describe('предмет под клеткой (выделение в редакторе)', () => {
+    const twoSided: PropSpec = {
+        label: 'Стол',
+        orientations: {
+            south: { sheet: 'office/Card Table.png', sx: 0, sy: 0, w: 4, h: 1, tall: 1 },
+            east: { sheet: 'office/Card Table.png', sx: 96, sy: 0, w: 1, h: 2, tall: 0 },
+        },
+    };
+    const catalogue: PropCatalogue = { table: twoSided };
+    const props = [
+        { type: 'table', x: 1, y: 1 }, // south: основание 4×1 на строке 1
+        { type: 'table', x: 1, y: 3, dir: 'east' as const }, // east: 1×2 вниз от (1,3)
+    ];
+
+    it('находит верхний предмет по клетке основания', () => {
+        expect(propAt(catalogue, props, 2, 1)).toBe(0);
+        expect(propAt(catalogue, props, 1, 4)).toBe(1); // вторая клетка основания east
+    });
+
+    it('часть в воздухе не считается основанием', () => {
+        expect(propAt(catalogue, props, 1, 0)).toBeNull(); // над south-столом воздух, но не footprint
+    });
+
+    it('пустая клетка и осиротевший тип дают null', () => {
+        expect(propAt(catalogue, props, 5, 5)).toBeNull();
+        expect(propAt(catalogue, [{ type: 'нет-такого', x: 2, y: 2 }], 2, 2)).toBeNull();
+    });
+
+    it('при перекрытии возвращает последний (нарисованный поверх)', () => {
+        const stacked = [
+            { type: 'table', x: 2, y: 2 },
+            { type: 'table', x: 2, y: 2 },
+        ];
+        expect(propAt(catalogue, stacked, 3, 2)).toBe(1);
     });
 });
 

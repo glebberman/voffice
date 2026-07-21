@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\MapUpdateRequest;
 use App\Models\DoorState;
 use App\Models\Message;
+use App\Models\PropCategory;
 use App\Models\PropType;
 use App\Models\Room;
 use App\Support\CurrentUser;
@@ -61,10 +62,18 @@ class RoomController extends Controller
     {
         abort_unless((bool) CurrentUser::of($request)->is_admin, 403);
 
+        // категории — только для группировки карточек каталога (две оси); id не
+        // нужен, каталог группирует по slug из PropType::catalogue()
+        $categories = [];
+        foreach (PropCategory::query()->orderBy('axis')->orderBy('sort')->orderBy('slug')->get() as $category) {
+            $categories[] = ['axis' => $category->axis, 'slug' => $category->slug, 'label' => $category->label];
+        }
+
         return Inertia::render('rooms/edit', [
             'room' => $room->only(['id', 'slug', 'name', 'map']),
             'rooms' => Room::query()->orderBy('id')->get(['slug', 'name']),
             'propTypes' => PropType::catalogue(),
+            'propCategories' => $categories,
         ]);
     }
 

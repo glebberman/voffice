@@ -1,7 +1,7 @@
 import type { EditorCanvasHandle } from '@/components/editor/EditorCanvas';
 import { Button } from '@/components/ui/button';
 import type { Tool } from '@/hooks/use-map-editor';
-import { Armchair, DoorOpen, Hand, Square, ZoomIn, ZoomOut } from 'lucide-react';
+import { DoorOpen, Hand, MousePointer2, Square, ZoomIn, ZoomOut } from 'lucide-react';
 
 const TOOLS: { value: Tool; label: React.ReactNode }[] = [
     { value: 'paint', label: 'Кисть' },
@@ -16,11 +16,11 @@ const TOOLS: { value: Tool; label: React.ReactNode }[] = [
     },
     { value: 'spawn', label: 'Спавн ⚑' },
     {
-        value: 'prop',
+        value: 'select',
         label: (
             <>
-                <Armchair className="size-3.5" />
-                Предмет
+                <MousePointer2 className="size-3.5" />
+                Выделение
             </>
         ),
     },

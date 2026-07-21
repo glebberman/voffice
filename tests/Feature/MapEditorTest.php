@@ -64,7 +64,14 @@ class MapEditorTest extends TestCase
     {
         $this->actingAs(User::factory()->admin()->create())
             ->get('/rooms/office/edit')
-            ->assertInertia(fn (Assert $p) => $p->component('rooms/edit')->where('room.slug', 'office')->has('rooms'));
+            ->assertInertia(
+                fn (Assert $p) => $p->component('rooms/edit')
+                    ->where('room.slug', 'office')
+                    ->has('rooms')
+                    ->has('propTypes')
+                    // категории для группировки карточек каталога (две оси)
+                    ->has('propCategories.0', fn (Assert $c) => $c->hasAll(['axis', 'slug', 'label'])),
+            );
     }
 
     public function test_admin_saves_valid_map(): void

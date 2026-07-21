@@ -87,6 +87,40 @@ export function propDirs(spec: PropSpec): PropDir[] {
 }
 
 /**
+ * Следующая сторона в цикле доступных ориентаций типа (по нажатию R). Если у
+ * типа одна сторона — возвращает её же; неизвестную текущую считает началом.
+ */
+export function nextPropDir(spec: PropSpec, dir: PropDir | undefined): PropDir {
+    const dirs = propDirs(spec);
+    if (dirs.length === 0) {
+        return dir ?? 'south';
+    }
+    const i = dirs.indexOf(dir ?? 'south');
+    return dirs[(i + 1) % dirs.length];
+}
+
+/**
+ * Индекс верхнего (нарисованного последним) предмета, чьё основание накрывает
+ * клетку (x,y), или null. Нужен редактору для выделения предмета кликом по полю.
+ */
+export function propAt(
+    catalogue: PropCatalogue,
+    props: readonly { type: string; x: number; y: number; dir?: PropDir }[],
+    x: number,
+    y: number,
+): number | null {
+    for (let i = props.length - 1; i >= 0; i--) {
+        const prop = props[i];
+        const spec = propSpec(catalogue, prop.type);
+        const orientation = spec ? propOrientation(spec, prop.dir) : null;
+        if (orientation && x >= prop.x && x < prop.x + orientation.w && y >= prop.y && y < prop.y + orientation.h) {
+            return i;
+        }
+    }
+    return null;
+}
+
+/**
  * Ориентация в заданном состоянии: регион берётся у состояния, геометрия — у
  * ориентации. Неизвестное состояние (карту сохранили до правки каталога) или
  * null возвращают ориентацию как есть — рисуется базовый регион.

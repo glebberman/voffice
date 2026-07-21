@@ -17,6 +17,24 @@ export interface RectPreview {
     y1: number;
 }
 
+/** Полупрозрачный предмет под курсором при расстановке/переносе: зелёный — влезает, красный — нет. */
+export interface PropGhostView {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    tall: number;
+    valid: boolean;
+}
+
+/** Габарит выделенного предмета (основание) для рамки-подсветки. */
+export interface PropSelectionView {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+
 function sameRange(a: ChunkRange, b: ChunkRange): boolean {
     return a.x0 === b.x0 && a.y0 === b.y0 && a.x1 === b.x1 && a.y1 === b.y1;
 }
@@ -46,11 +64,15 @@ export class EditorScene {
     private doorLayer = new Container();
     private markerLayer = new Container(); // спавн, порталы, объекты
     private zoneLayer = new Container(); // оверлей областей поверх всего, кроме курсора
+    private selectG = new Graphics(); // рамка выделенного предмета
+    private ghostG = new Graphics(); // предмет-призрак при расстановке/переносе
     private hoverG = new Graphics();
     private rectG = new Graphics();
 
     private zones: Zone[] = [];
     private selectedZone: number | null = null;
+    private propGhost: PropGhostView | null = null;
+    private propSelection: PropSelectionView | null = null;
 
     private rows: string[];
     private width: number;
@@ -116,6 +138,8 @@ export class EditorScene {
             this.doorLayer,
             this.markerLayer,
             this.zoneLayer,
+            this.selectG,
+            this.ghostG,
             this.hoverG,
             this.rectG,
         );
@@ -275,6 +299,16 @@ export class EditorScene {
         this.drawZones();
     }
 
+    setPropGhost(ghost: PropGhostView | null): void {
+        this.propGhost = ghost;
+        this.drawGhost();
+    }
+
+    setPropSelection(rect: PropSelectionView | null): void {
+        this.propSelection = rect;
+        this.drawSelection();
+    }
+
     setHover(tile: Point | null): void {
         this.hoverTile = tile;
         this.drawHover();
@@ -321,6 +355,8 @@ export class EditorScene {
         this.applyView();
         this.updateChunks(); // содержимое чанков от масштаба не зависит — только их набор
         this.drawZones();
+        this.drawSelection();
+        this.drawGhost();
         this.drawHover();
         this.drawRect();
     }
@@ -467,6 +503,35 @@ export class EditorScene {
             label.position.set(x + 3, y + 2);
             this.zoneLayer.addChild(label);
         });
+    }
+
+    private drawGhost(): void {
+        this.ghostG.clear();
+        const g = this.propGhost;
+        if (!g) {
+            return;
+        }
+        const color = g.valid ? 0x22c55e : 0xef4444;
+        // часть в воздухе прохода не блокирует — рисуем её бледнее основания
+        if (g.tall > 0) {
+            this.ghostG
+                .rect(g.x * TILE, (g.y - g.tall) * TILE, g.w * TILE, g.tall * TILE)
+                .fill({ color, alpha: 0.12 })
+                .stroke({ width: 1.5 / this.scale, color, alpha: 0.7 });
+        }
+        this.ghostG
+            .rect(g.x * TILE, g.y * TILE, g.w * TILE, g.h * TILE)
+            .fill({ color, alpha: 0.3 })
+            .stroke({ width: 2 / this.scale, color });
+    }
+
+    private drawSelection(): void {
+        this.selectG.clear();
+        const r = this.propSelection;
+        if (!r) {
+            return;
+        }
+        this.selectG.rect(r.x * TILE, r.y * TILE, r.w * TILE, r.h * TILE).stroke({ width: 2.5 / this.scale, color: 0x3b82f6 });
     }
 
     private drawHover(): void {
