@@ -76,6 +76,7 @@ function RoomView({ me }: { me: User }) {
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
     const [chatError, setChatError] = useState<string | null>(null);
+    const [sending, setSending] = useState(false);
     const [tab, setTab] = useState<'nearby' | 'room'>('nearby');
     const [editorOpen, setEditorOpen] = useState(false);
     // в этом проекте users.avatar — json-конфиг образа, а не URL картинки
@@ -143,14 +144,21 @@ function RoomView({ me }: { me: User }) {
             setDraft('');
             return;
         }
-        // сообщение комнаты пишется на сервере — очищаем поле только после
-        // подтверждения, иначе срезанное throttle (429) сообщение пропадёт молча
+        // Сообщение комнаты пишется на сервере — поле чистится только после
+        // подтверждения, иначе срезанное throttle (429) сообщение пропадёт
+        // молча. Пока запрос в полёте, повторную отправку не пускаем: иначе
+        // второй Enter по ещё не очищенному полю уходил бы дублем.
+        if (sending) {
+            return;
+        }
         const text = draft;
+        setSending(true);
         void sendRoomMessage(text)
             .then(() => setDraft(''))
             .catch((err: unknown) => {
                 setChatError(err instanceof ApiError && err.status === 429 ? 'Слишком часто — подождите пару секунд' : 'Не удалось отправить');
-            });
+            })
+            .finally(() => setSending(false));
     };
 
     const selfStatus = statuses[me.id] ?? 'available';
@@ -325,7 +333,10 @@ function RoomView({ me }: { me: User }) {
                                 <button
                                     key={key}
                                     type="button"
-                                    onClick={() => setTab(key)}
+                                    onClick={() => {
+                                        setTab(key);
+                                        setChatError(null); // ошибка комнаты не висит над proximity-полем
+                                    }}
                                     className={`rounded-lg px-3 py-1 text-sm font-semibold transition-colors ${
                                         tab === key ? 'bg-secondary' : 'text-muted-foreground hover:text-foreground'
                                     }`}
@@ -371,7 +382,7 @@ function RoomView({ me }: { me: User }) {
                                     placeholder={tab === 'nearby' ? 'Сказать вслух…' : 'Написать всей комнате…'}
                                     maxLength={tab === 'nearby' ? 200 : 500}
                                 />
-                                <Button type="submit" size="icon" disabled={!draft.trim()}>
+                                <Button type="submit" size="icon" disabled={!draft.trim() || sending}>
                                     <SendHorizontal className="size-4" />
                                 </Button>
                             </div>
