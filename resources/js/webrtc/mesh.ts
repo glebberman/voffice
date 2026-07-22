@@ -20,6 +20,10 @@ interface Peer {
     makingOffer: boolean;
     ignoreOffer: boolean;
     stream: MediaStream;
+    // Видео-дорожка у пира одна, а её содержимое меняется (камера ↔ экран).
+    // Держим сендер здесь: getSenders() не найдёт его, пока трек снят в null,
+    // а у вошедшего без камеры его поначалу вообще нет.
+    videoSender: RTCRtpSender | null;
 }
 
 // Mesh WebRTC-соединений с «perfect negotiation»: обе стороны создают
@@ -28,6 +32,11 @@ interface Peer {
 export class Mesh {
     private peers = new Map<number, Peer>();
     private localStream: MediaStream | null = null;
+    // что реально уходит в видео-дорожку: камера или экран
+    private videoTrack: MediaStreamTrack | null = null;
+    // желаемый состав (последний updatePeers): по нему решаем, стоит ли вообще
+    // поднимать соединение на входящий сигнал
+    private desired = new Set<number>();
 
     constructor(
         private selfId: number,
@@ -36,6 +45,7 @@ export class Mesh {
 
     setLocalStream(stream: MediaStream | null): void {
         this.localStream = stream;
+        this.videoTrack = stream?.getVideoTracks()[0] ?? null;
         for (const [, peer] of this.peers) {
             this.attachTracks(peer);
         }
@@ -45,6 +55,7 @@ export class Mesh {
     // закрыть ушедшие.
     updatePeers(desired: number[]): void {
         const set = new Set(desired);
+        this.desired = set;
         for (const id of desired) {
             if (!this.peers.has(id)) {
                 this.createPeer(id);
@@ -58,8 +69,14 @@ export class Mesh {
     }
 
     async handleSignal(peerId: number, signal: RtcSignal): Promise<void> {
-        // сигнал может прийти раньше, чем близость создаст соединение
-        const peer = this.peers.get(peerId) ?? this.createPeer(peerId);
+        // Сигнал может прийти раньше, чем близость создаст соединение, — но
+        // только от того, кто в желаемом составе. Иначе «хвостовой» оффер от
+        // только что ушедшего воскрешал бы соединение до следующего heartbeat.
+        const known = this.peers.get(peerId);
+        const peer = known ?? (this.desired.has(peerId) ? this.createPeer(peerId) : null);
+        if (!peer) {
+            return;
+        }
         const pc = peer.pc;
 
         try {
@@ -90,9 +107,9 @@ export class Mesh {
 
     // заменить исходящий видео-трек (демонстрация экрана / возврат к камере)
     replaceVideoTrack(track: MediaStreamTrack | null): void {
+        this.videoTrack = track;
         for (const [, peer] of this.peers) {
-            const sender = peer.pc.getSenders().find((s) => s.track?.kind === 'video');
-            void sender?.replaceTrack(track);
+            this.applyVideo(peer);
         }
     }
 
@@ -101,6 +118,7 @@ export class Mesh {
     }
 
     destroy(): void {
+        this.desired.clear();
         for (const id of [...this.peers.keys()]) {
             this.closePeer(id);
         }
@@ -111,10 +129,29 @@ export class Mesh {
             return;
         }
         const existing = new Set(peer.pc.getSenders().map((s) => s.track));
-        for (const track of this.localStream.getTracks()) {
+        for (const track of this.localStream.getAudioTracks()) {
             if (!existing.has(track)) {
                 peer.pc.addTrack(track, this.localStream);
             }
+        }
+        // видео отдельно: пиру, поднятому во время демонстрации экрана, должен
+        // уехать экран, а не камера из localStream
+        this.applyVideo(peer);
+    }
+
+    /**
+     * Приводит видео-дорожку пира к текущему `videoTrack`. Сендера может ещё не
+     * быть — у вошедшего по audio-only фолбэку камеры нет вовсе, и без addTrack
+     * демонстрация экрана у него молча никуда не уходила.
+     */
+    private applyVideo(peer: Peer): void {
+        if (peer.videoSender) {
+            void peer.videoSender.replaceTrack(this.videoTrack);
+
+            return;
+        }
+        if (this.videoTrack) {
+            peer.videoSender = peer.pc.addTrack(this.videoTrack, this.localStream ?? new MediaStream());
         }
     }
 
@@ -126,6 +163,7 @@ export class Mesh {
             makingOffer: false,
             ignoreOffer: false,
             stream: new MediaStream(),
+            videoSender: null,
         };
         this.peers.set(peerId, peer);
         this.attachTracks(peer);

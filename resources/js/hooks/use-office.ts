@@ -492,7 +492,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         const recomputeCall = () => {
             const me = self();
             const others = [...playersRef.current.values()].filter((p) => p.id !== me.id);
-            const desired = callPeers(map, me, others, inCallRef.current);
+            // за закрытую дверь звонок не тянем — как и текстовый чат
+            const desired = callPeers(map, me, others, inCallRef.current, (x, y) => sceneRef.current?.isVisible(x, y) ?? false);
             mesh.updatePeers(desired);
             updateVolumes(me, desired);
         };

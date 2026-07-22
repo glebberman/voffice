@@ -6,15 +6,27 @@ interface Positioned {
     y: number;
 }
 
-// С кем должен быть установлен звонок: те, кто в звонке (inCall) и в зоне
-// слышимости (то же правило, что у proximity-чата — радиус либо одна
-// приватная зона). Возвращает отсортированный список для стабильности.
-export function callPeers(map: GameMap, self: Positioned, others: Positioned[], inCall: ReadonlySet<number>): number[] {
+/**
+ * С кем должен быть установлен звонок: те, кто в звонке (inCall), в зоне
+ * слышимости (радиус либо одна приватная зона — правило proximity-чата) и до
+ * кого есть путь. Последнее важно из-за дверей: текстовый чат за закрытую дверь
+ * не проходит, и звонок не должен. Видимость приходит извне — её считает сцена
+ * и держит закешированной, свой обход на каждое движение был бы дорог.
+ *
+ * Возвращает отсортированный список для стабильности.
+ */
+export function callPeers(
+    map: GameMap,
+    self: Positioned,
+    others: Positioned[],
+    inCall: ReadonlySet<number>,
+    isVisible: (x: number, y: number) => boolean,
+): number[] {
     if (!inCall.has(self.id)) {
         return [];
     }
     return others
-        .filter((o) => o.id !== self.id && inCall.has(o.id) && map.canHear(self.x, self.y, o.x, o.y))
+        .filter((o) => o.id !== self.id && inCall.has(o.id) && map.canHear(self.x, self.y, o.x, o.y) && isVisible(o.x, o.y))
         .map((o) => o.id)
         .sort((a, b) => a - b);
 }
