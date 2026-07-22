@@ -70,7 +70,13 @@ class DoorController extends Controller
                 break;
         }
 
-        $state->fill(['closed' => $closed, 'locked' => $locked])->save();
+        // upsert, а не save(): два одновременных первых касания одной двери
+        // дали бы два INSERT и падение на unique(room_id, door_key)
+        DoorState::upsert(
+            [['room_id' => $room->id, 'door_key' => $door['id'], 'closed' => $closed, 'locked' => $locked]],
+            ['room_id', 'door_key'],
+            ['closed', 'locked'],
+        );
 
         broadcast(new DoorChanged($room, $door['id'], $closed, $locked));
 

@@ -45,7 +45,10 @@ Route::middleware(['auth'])->group(function (): void {
     Route::put('prop-categories/{prop_category}', [PropCategoryController::class, 'update'])->name('prop-categories.update');
     Route::delete('prop-categories/{prop_category}', [PropCategoryController::class, 'destroy'])->name('prop-categories.destroy');
 
-    Route::post('rooms/{room:slug}/doors', [DoorController::class, 'update'])->name('doors.update');
+    // throttle по тем же соображениям, что и у предметов: запись в БД + эфир
+    Route::post('rooms/{room:slug}/doors', [DoorController::class, 'update'])
+        ->middleware('throttle:60,1')
+        ->name('doors.update');
     // переключение состояния предмета (switchable) — по образцу дверей.
     // throttle: каждый запрос читает каталог, пишет в БД и вещает всей комнате,
     // так что зажатая клавиша не должна превращаться в поток
@@ -53,7 +56,8 @@ Route::middleware(['auth'])->group(function (): void {
         ->middleware('throttle:60,1')
         ->name('prop-states.update');
 
-    Route::post('messages', [MessageController::class, 'store'])->name('messages.store');
+    // throttle: сообщение пишется в БД и вещается всей комнате
+    Route::post('messages', [MessageController::class, 'store'])->middleware('throttle:30,1')->name('messages.store');
     Route::post('position', [PositionController::class, 'update'])->name('position.update');
     Route::post('avatar', [AvatarController::class, 'update'])->name('avatar.update');
 });

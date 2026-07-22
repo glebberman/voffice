@@ -165,6 +165,57 @@ class MapEditorTest extends TestCase
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $noName])->assertSessionHasErrors('map.zones.0.name');
     }
 
+    public function test_props_cannot_stand_on_spawn_door_or_each_other(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $map = $this->validMap();
+        $map['rows'] = ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'];
+        $map['spawn'] = ['x' => 3, 'y' => 4];
+        $withProps = fn (array $props, array $doors = []): array => array_merge($map, ['props' => $props, 'doors' => $doors]);
+
+        // шкаф 2×1 накрывает точку спавна
+        $this->actingAs($admin)
+            ->put('/rooms/office', ['name' => 'X', 'map' => $withProps([['id' => 'c1', 'type' => 'cabinet', 'x' => 3, 'y' => 4]])])
+            ->assertSessionHasErrors('map.props.0');
+
+        // ...и дверь
+        $onDoor = $withProps(
+            [['id' => 'c1', 'type' => 'cabinet', 'x' => 1, 'y' => 5]],
+            [['id' => 'd1', 'x' => 2, 'y' => 5, 'lock' => null]],
+        );
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $onDoor])->assertSessionHasErrors('map.props.0');
+
+        // ...и друг друга
+        $overlap = $withProps([
+            ['id' => 'c1', 'type' => 'cabinet', 'x' => 1, 'y' => 5],
+            ['id' => 'c2', 'type' => 'cabinet', 'x' => 2, 'y' => 5],
+        ]);
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $overlap])->assertSessionHasErrors('map.props.1');
+
+        // а рядом, не пересекаясь, — можно
+        $ok = $withProps([
+            ['id' => 'c1', 'type' => 'cabinet', 'x' => 1, 'y' => 5],
+            ['id' => 'c2', 'type' => 'cabinet', 'x' => 3, 'y' => 5],
+        ]);
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $ok])->assertRedirect('/rooms/office');
+    }
+
+    public function test_portal_arrival_must_be_walkable_in_the_target_room(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $map = $this->validMap();
+        // (0,0) в коворкинге — стена по периметру
+        $map['portals'] = [['x' => 1, 'y' => 1, 'to' => 'coworking', 'label' => 'В коворкинг', 'tx' => 0, 'ty' => 0]];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertSessionHasErrors('map.portals.0.tx');
+
+        // а спавн коворкинга проходим
+        $map['portals'][0]['tx'] = 7;
+        $map['portals'][0]['ty'] = 7;
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertRedirect('/rooms/office');
+    }
+
     public function test_doors_must_have_unique_ids(): void
     {
         $admin = User::factory()->admin()->create();

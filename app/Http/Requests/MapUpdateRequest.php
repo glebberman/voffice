@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\PropOrientation;
 use App\Models\PropType;
+use App\Models\Room;
 use App\Support\MapLimits;
 use App\Support\PropBehaviors;
 use Illuminate\Foundation\Http\FormRequest;
@@ -204,6 +205,23 @@ class MapUpdateRequest extends FormRequest
                     if (! $inBounds($x, $y)) {
                         $validator->errors()->add("map.portals.{$i}", 'Портал за пределами карты');
                     }
+                    // Клетка прибытия — в целевой комнате, и на неё можно встать:
+                    // иначе портал молча высаживал бы на спавн (resolveSpawn).
+                    if (! is_array($portal)) {
+                        continue;
+                    }
+                    $to = $portal['to'] ?? null;
+                    $target = is_string($to) ? Room::query()->where('slug', $to)->first() : null;
+                    if ($target === null) {
+                        continue; // несуществующую комнату ловит правило exists
+                    }
+                    $tx = is_int($portal['tx'] ?? null) ? $portal['tx'] : -1;
+                    $ty = is_int($portal['ty'] ?? null) ? $portal['ty'] : -1;
+                    $row = $target->map['rows'][$ty] ?? null;
+                    $char = is_string($row) && $tx >= 0 && $tx < strlen($row) ? $row[$tx] : '#';
+                    if (! in_array($char, self::WALKABLE, true)) {
+                        $validator->errors()->add("map.portals.{$i}.tx", 'Клетка прибытия в целевой комнате непроходима');
+                    }
                 }
 
                 // дверь должна стоять на проходимой клетке — иначе через неё
@@ -236,6 +254,12 @@ class MapUpdateRequest extends FormRequest
 
                 // предмет должен целиком помещаться: и основание, и часть в воздухе
                 $catalogue = $this->propCatalogue();
+                $spawnKey = null;
+                $spawn = $this->input('map.spawn');
+                if (is_array($spawn) && is_int($spawn['x'] ?? null) && is_int($spawn['y'] ?? null)) {
+                    $spawnKey = $spawn['x'].':'.$spawn['y'];
+                }
+                $takenByProps = [];
                 foreach ($this->mapList('props') as $i => $prop) {
                     $type = is_array($prop) ? ($prop['type'] ?? null) : null;
                     $spec = is_string($type) ? ($catalogue[$type] ?? null) : null;
@@ -267,8 +291,32 @@ class MapUpdateRequest extends FormRequest
                     [$x, $y] = self::pointOf($prop);
                     if (! $inBounds($x, $y) || ! $inBounds($x + $orientation['w'] - 1, $y + $orientation['h'] - 1)) {
                         $validator->errors()->add("map.props.{$i}", 'Предмет за пределами карты');
-                    } elseif ($y - $orientation['tall'] < 0) {
+
+                        continue;
+                    }
+                    if ($y - $orientation['tall'] < 0) {
                         $validator->errors()->add("map.props.{$i}", 'Высокой части предмета не хватает места сверху');
+
+                        continue;
+                    }
+
+                    // Основание непроходимо, поэтому оно не должно накрывать ни
+                    // точку спавна (игрок появился бы внутри мебели), ни дверь
+                    // (её было бы не открыть), ни чужой предмет.
+                    for ($dy = 0; $dy < $orientation['h']; $dy++) {
+                        for ($dx = 0; $dx < $orientation['w']; $dx++) {
+                            $cell = ($x + $dx).':'.($y + $dy);
+                            if ($cell === $spawnKey) {
+                                $validator->errors()->add("map.props.{$i}", 'Предмет стоит на точке спавна');
+                            }
+                            if (isset($seenDoors[$cell])) {
+                                $validator->errors()->add("map.props.{$i}", 'Предмет стоит на двери');
+                            }
+                            if (isset($takenByProps[$cell])) {
+                                $validator->errors()->add("map.props.{$i}", 'Предметы накладываются друг на друга');
+                            }
+                            $takenByProps[$cell] = true;
+                        }
                     }
                 }
             },
