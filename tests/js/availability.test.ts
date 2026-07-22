@@ -1,5 +1,6 @@
 import {
     blockedByProps,
+    canPlace,
     footprintCells,
     hasAccess,
     propZoneCells,
@@ -76,6 +77,44 @@ describe('достижимость от спавна', () => {
     it('спавн на стене или под предметом не даёт ничего', () => {
         expect(reachableFromSpawn(split, new Set(), { x: 3, y: 1 }).size).toBe(0);
         expect(reachableFromSpawn(split, new Set([1 * 7 + 1]), { x: 1, y: 1 }).size).toBe(0);
+    });
+});
+
+describe('можно ли поставить предмет', () => {
+    // скамья 2×1: занимает (x, y) и (x+1, y)
+    const bench = { sheet: 'office/laptop_1.png', sx: 0, sy: 0, w: 2, h: 1, tall: 0 };
+    const ctx = (over: Partial<Parameters<typeof canPlace>[3]> = {}) => ({
+        width: 10,
+        height: 10,
+        spawn: { x: 9, y: 9 },
+        doors: [],
+        occupied: new Set<number>(),
+        ...over,
+    });
+
+    it('на свободном месте — можно', () => {
+        expect(canPlace(bench, 2, 2, ctx())).toBe(true);
+    });
+
+    it('за краем карты — нельзя', () => {
+        expect(canPlace(bench, 9, 2, ctx())).toBe(false); // скамья шириной 2
+    });
+
+    it('поверх точки спавна — нельзя (игрок появился бы внутри мебели)', () => {
+        expect(canPlace(bench, 8, 9, ctx())).toBe(false);
+        expect(canPlace(bench, 8, 8, ctx())).toBe(true); // соседний ряд свободен
+    });
+
+    it('поверх двери — нельзя (её было бы не открыть)', () => {
+        expect(canPlace(bench, 2, 2, ctx({ doors: [{ x: 3, y: 2 }] }))).toBe(false);
+        expect(canPlace(bench, 2, 2, ctx({ doors: [{ x: 4, y: 2 }] }))).toBe(true);
+    });
+
+    it('поверх чужого основания — нельзя', () => {
+        const occupied = new Set([2 * 10 + 3]);
+
+        expect(canPlace(bench, 2, 2, ctx({ occupied }))).toBe(false);
+        expect(canPlace(bench, 4, 2, ctx({ occupied }))).toBe(true);
     });
 });
 

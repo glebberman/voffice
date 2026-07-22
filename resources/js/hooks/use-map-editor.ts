@@ -1,6 +1,7 @@
 import type { EditorCanvasHandle, Tile } from '@/components/editor/EditorCanvas';
 import {
     blockedByProps,
+    canPlace,
     footprintCells,
     hasAccess,
     propZoneCells,
@@ -22,7 +23,17 @@ import {
     type PropData,
     type Zone,
 } from '@/game/map';
-import { nextPropDir, propAt, propDirs, propFits, propOrientation, propSpec, type PropCatalogue, type PropDir } from '@/game/props';
+import {
+    nextPropDir,
+    propAt,
+    propDirs,
+    propFits,
+    propOrientation,
+    propSpec,
+    type PropCatalogue,
+    type PropDir,
+    type PropOrientation,
+} from '@/game/props';
 import { router } from '@inertiajs/react';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -127,11 +138,29 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     const width = rows[0]?.length ?? 0;
     const height = rows.length;
 
+    // клетки чужих оснований; переносимый предмет сам себе не мешает
+    const occupied = useMemo(() => blockedByProps(catalogue, props, width), [catalogue, props, width]);
+    const occupiedWithout = (exceptId?: string): ReadonlySet<number> => {
+        const own = exceptId ? props.find((p) => p.id === exceptId) : undefined;
+        if (!own) {
+            return occupied;
+        }
+        const set = new Set(occupied);
+        for (const cell of footprintCells(catalogue, own)) {
+            set.delete(cell.y * width + cell.x);
+        }
+        return set;
+    };
+
+    /** Встанет ли предмет — по тем же правилам, что и на сервере. */
+    const fits = (o: PropOrientation, x: number, y: number, exceptId?: string): boolean =>
+        canPlace(o, x, y, { width, height, spawn, doors, occupied: occupiedWithout(exceptId) });
+
     // сторона, ориентация и «влезает ли» — для призрака и постановки
-    const ghostFor = (type: string, dir: PropDir | undefined, x: number, y: number): PropGhostView | null => {
+    const ghostFor = (type: string, dir: PropDir | undefined, x: number, y: number, exceptId?: string): PropGhostView | null => {
         const spec = propSpec(catalogue, type);
         const o = spec ? propOrientation(spec, dir) : null;
-        return o ? { x, y, w: o.w, h: o.h, tall: o.tall, valid: propFits(o, x, y, width, height) } : null;
+        return o ? { x, y, w: o.w, h: o.h, tall: o.tall, valid: fits(o, x, y, exceptId) } : null;
     };
 
     const applyTile = (x: number, y: number) => {
@@ -206,7 +235,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
                 }
                 const spec = propSpec(catalogue, o.type);
                 const orientation = spec ? propOrientation(spec, dir) : null;
-                if (!orientation || !propFits(orientation, o.x, o.y, width, height)) {
+                if (!orientation || !fits(orientation, o.x, o.y, o.id)) {
                     return o;
                 }
                 return { ...o, dir: dir === 'south' ? undefined : dir };
@@ -214,8 +243,21 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         );
     };
 
+    // Панель правит координаты числами — те же правила, что и у призрака:
+    // молча принятая правка позже завалила бы сохранение всей карты.
     const patchProp = (i: number, patch: Partial<PropData>) => {
-        setProps((prev) => prev.map((o, j) => (j === i ? { ...o, ...patch } : o)));
+        setProps((prev) =>
+            prev.map((o, j) => {
+                if (j !== i) {
+                    return o;
+                }
+                const next = { ...o, ...patch };
+                const spec = propSpec(catalogue, next.type);
+                const orientation = spec ? propOrientation(spec, next.dir) : null;
+
+                return orientation && !fits(orientation, next.x, next.y, o.id) ? o : next;
+            }),
+        );
     };
 
     const removeProp = (i: number) => {
@@ -300,7 +342,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
             const orientation = p && spec ? propOrientation(spec, p.dir) : null;
             // пишем, только если реально сдвинули и предмет влезает: иначе простой
             // клик-выделение зря пересобирал бы весь слой спрайтов (мерцание)
-            if (p && orientation && (md.x !== p.x || md.y !== p.y) && propFits(orientation, md.x, md.y, width, height)) {
+            if (p && orientation && (md.x !== p.x || md.y !== p.y) && fits(orientation, md.x, md.y, p.id)) {
                 setProps((prev) => prev.map((pp, j) => (j === md.index ? { ...pp, x: md.x, y: md.y } : pp)));
             }
             moveDrag.current = null;
@@ -424,6 +466,37 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         setSizeDraft({ w, h });
     };
 
+    /**
+     * Серверная ошибка вида `map.props.7` сама по себе не говорит, о каком
+     * предмете речь: подставляем к сообщению название и координаты.
+     */
+    const explain = (key: string, message: string): string => {
+        const at = /^map\.(props|doors|zones|portals)\.(\d+)/.exec(key);
+        if (!at) {
+            return message;
+        }
+        const i = Number(at[2]);
+        if (at[1] === 'props') {
+            const prop = props.at(i);
+            const spec = prop ? propSpec(catalogue, prop.type) : null;
+
+            return prop ? `${spec?.label ?? prop.type} (${prop.x}, ${prop.y}): ${message}` : message;
+        }
+        if (at[1] === 'doors') {
+            const door = doors.at(i);
+
+            return door ? `Дверь (${door.x}, ${door.y}): ${message}` : message;
+        }
+        if (at[1] === 'zones') {
+            const zone = zones.at(i);
+
+            return zone ? `Зона «${zone.name}»: ${message}` : message;
+        }
+        const portal = portals.at(i);
+
+        return portal ? `Портал → ${portal.to} (${portal.x}, ${portal.y}): ${message}` : message;
+    };
+
     const save = () => {
         setSaving(true);
         setErrors([]);
@@ -433,7 +506,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
             { name, map: map as unknown as Record<string, never> },
             {
                 onError: (errs) => {
-                    setErrors(Object.values(errs));
+                    setErrors(Object.entries(errs).map(([key, message]) => explain(key, message)));
                     setSaving(false);
                 },
                 onFinish: () => setSaving(false),
@@ -445,7 +518,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     const move = moveDrag.current;
     const propGhost: PropGhostView | null =
         dragTarget && move && move.index < props.length
-            ? ghostFor(props[move.index].type, props[move.index].dir, dragTarget.x, dragTarget.y)
+            ? ghostFor(props[move.index].type, props[move.index].dir, dragTarget.x, dragTarget.y, props[move.index].id)
             : placing && hover
               ? ghostFor(placing.type, placing.dir, hover.x, hover.y)
               : null;

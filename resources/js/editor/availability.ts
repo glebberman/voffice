@@ -1,9 +1,53 @@
 import { isWalkableChar, type PropData } from '@/game/map';
-import { propInteractionCells, propOrientation, type PropCatalogue, type PropDir } from '@/game/props';
+import { propFits, propInteractionCells, propOrientation, type PropCatalogue, type PropDir, type PropOrientation } from '@/game/props';
 
 // «Есть ли куда встать» — семантика из Sims: интерактивный предмет бесполезен,
 // если к его зоне не подойти. Правила чистые и без Pixi, поэтому проверяются
 // тестами, а редактор только рисует вердикт.
+
+/** Всё, что мешает предмету встать в клетку, кроме него самого. */
+export interface PlacementContext {
+    width: number;
+    height: number;
+    spawn: { x: number; y: number };
+    doors: readonly { x: number; y: number }[];
+    /** Клетки чужих оснований (blockedByProps с exceptId переносимого). */
+    occupied: ReadonlySet<number>;
+}
+
+/**
+ * Можно ли поставить предмет сюда — те же правила, что проверяет сервер
+ * (`MapUpdateRequest`): основание целиком в границах, высокой части хватает
+ * места сверху, и основание не накрывает ни точку спавна (игрок появился бы
+ * внутри мебели), ни дверь (её было бы не открыть), ни чужой предмет.
+ *
+ * Клиенту это нужно, чтобы призрак краснел сразу: без проверки предмет молча
+ * вставал, а карта переставала сохраняться — и узнавали об этом через десять
+ * минут правок.
+ */
+export function canPlace(orientation: PropOrientation, x: number, y: number, ctx: PlacementContext): boolean {
+    if (!propFits(orientation, x, y, ctx.width, ctx.height)) {
+        return false;
+    }
+
+    for (let dy = 0; dy < orientation.h; dy++) {
+        for (let dx = 0; dx < orientation.w; dx++) {
+            const cx = x + dx;
+            const cy = y + dy;
+            if (cx === ctx.spawn.x && cy === ctx.spawn.y) {
+                return false;
+            }
+            if (ctx.occupied.has(cy * ctx.width + cx)) {
+                return false;
+            }
+            if (ctx.doors.some((d) => d.x === cx && d.y === cy)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
 
 /** Клетка зоны с вердиктом: можно ли на неё встать. */
 export interface ZoneCell {
