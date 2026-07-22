@@ -110,16 +110,20 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
 
     // Ставит предмет из каталога, если он влезает в клетку. dir=south не храним:
     // отсутствие поля и есть south, так карты остаются минимальными. Режим
-    // расстановки не сбрасываем — можно ставить подряд, как кистью.
+    // расстановки не сбрасываем — можно ставить подряд, как кистью, но
+    // свежепоставленный сразу выделяем: панель настроек открывается на нём.
     const placeAt = (tile: Tile, p: Placing) => {
         const g = ghostFor(p.type, p.dir, tile.x, tile.y);
         if (!g?.valid) {
             return;
         }
+        // индекс новинки = текущая длина (propsRef свежий, без гонки закрытия placeAt)
+        const idx = propsRef.current.length;
         setProps((prev) => [
             ...prev,
             { id: `${p.type}-${Date.now()}-${propSeq.current++}`, type: p.type, x: tile.x, y: tile.y, ...(p.dir === 'south' ? {} : { dir: p.dir }) },
         ]);
+        setSelectedProp(idx);
     };
 
     // Клик по карточке каталога «берёт» предмет на курсор: дальше клик по полю
@@ -164,6 +168,10 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
                 return { ...o, dir: dir === 'south' ? undefined : dir };
             }),
         );
+    };
+
+    const patchProp = (i: number, patch: Partial<PropData>) => {
+        setProps((prev) => prev.map((o, j) => (j === i ? { ...o, ...patch } : o)));
     };
 
     const removeProp = (i: number) => {
@@ -419,6 +427,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         selectedProp,
         setSelectedProp,
         rotateProp,
+        patchProp,
         removeProp,
         propGhost,
         propSelection,

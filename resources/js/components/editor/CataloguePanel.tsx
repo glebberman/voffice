@@ -1,10 +1,8 @@
 import { CollapsiblePanel } from '@/components/editor/CollapsiblePanel';
-import { CoordInput } from '@/components/editor/CoordInput';
 import { PropThumbnail } from '@/components/editor/PropThumbnail';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { PropData } from '@/game/map';
-import { PROP_DIR_LABEL, propDirs, propOrientation, propSpec, withState, type PropCatalogue, type PropDir } from '@/game/props';
+import { PROP_DIR_LABEL, propDirs, propOrientation, propSpec, withState, type PropCatalogue } from '@/game/props';
 import { Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -31,7 +29,8 @@ function slugsOf(catalogue: PropCatalogue, type: string, axis: CatalogueAxis): s
  * Каталог предметов: карточки с превью и описанием, группировка по двум осям
  * (как в Sims — предмет может попасть в несколько групп). Клик по карточке
  * «берёт» предмет на курсор (см. хук: дальше клик по полю ставит, R — поворот,
- * перенос кладёт на отпускании). Ниже — компактный список расставленных.
+ * перенос кладёт на отпускании). Ниже — список расставленных для навигации:
+ * клик выделяет предмет (правится он в панели настроек), крестик удаляет.
  */
 export function CataloguePanel({
     catalogue,
@@ -39,29 +38,20 @@ export function CataloguePanel({
     props,
     placingType,
     selected,
-    width,
-    height,
     onPick,
     onSelect,
-    onRotate,
     onRemove,
-    onChange,
 }: {
     catalogue: PropCatalogue;
     categories: PropCategoryInfo[];
     props: PropData[];
     placingType: string | null;
     selected: number | null;
-    width: number;
-    height: number;
     onPick: (type: string) => void;
     onSelect: (i: number | null) => void;
-    onRotate: (i: number, dir: PropDir) => void;
     onRemove: (i: number) => void;
-    onChange: (next: PropData[]) => void;
 }) {
     const [axis, setAxis] = useState<CatalogueAxis>('purpose');
-    const patch = (i: number, p: Partial<PropData>) => onChange(props.map((o, j) => (j === i ? { ...o, ...p } : o)));
 
     const types = Object.keys(catalogue);
     const axisCats = categories.filter((c) => c.axis === axis);
@@ -140,42 +130,27 @@ export function CataloguePanel({
             </div>
 
             {props.length > 0 && (
-                <div className="mt-3 flex max-h-52 flex-col gap-1 overflow-y-auto border-t pt-2">
+                <div className="mt-3 flex max-h-52 flex-col gap-0.5 overflow-y-auto border-t pt-2">
                     {props.map((prop, i) => {
                         const spec = propSpec(catalogue, prop.type);
-                        const dirs = spec ? propDirs(spec) : [];
+                        const rotatable = spec ? propDirs(spec).length > 1 : false;
                         return (
                             <div
                                 key={prop.id}
                                 onClick={() => onSelect(i)}
-                                className={`flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5 text-xs ${
-                                    selected === i ? 'ring-primary ring-2' : ''
+                                className={`flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs ${
+                                    selected === i ? 'ring-primary ring-2' : 'hover:bg-muted/50'
                                 }`}
                             >
                                 <span className="flex-1 truncate">{spec?.label ?? prop.type}</span>
-                                {/* поворот показываем, только когда есть из чего выбирать */}
-                                {spec && dirs.length > 1 && (
-                                    <Select value={prop.dir ?? 'south'} onValueChange={(v) => onRotate(i, v as PropDir)}>
-                                        <SelectTrigger className="h-7 w-24 text-xs" onClick={(e) => e.stopPropagation()}>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {dirs.map((dir) => (
-                                                <SelectItem key={dir} value={dir}>
-                                                    {PROP_DIR_LABEL[dir]}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                                <span onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
-                                    <CoordInput label="x" value={prop.x} max={width - 1} onChange={(v) => patch(i, { x: v })} />
-                                    <CoordInput label="y" value={prop.y} max={height - 1} onChange={(v) => patch(i, { y: v })} />
+                                <span className="text-muted-foreground shrink-0 text-[10px]">
+                                    {rotatable ? `${PROP_DIR_LABEL[prop.dir ?? 'south']} · ` : ''}
+                                    {prop.x},{prop.y}
                                 </span>
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="size-6"
+                                    className="size-6 shrink-0"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onRemove(i);

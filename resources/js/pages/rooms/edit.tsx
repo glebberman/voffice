@@ -4,6 +4,7 @@ import { EditorCanvas } from '@/components/editor/EditorCanvas';
 import { MapSettingsPanel } from '@/components/editor/MapSettingsPanel';
 import { ObjectsPanel } from '@/components/editor/ObjectsPanel';
 import { PortalsPanel } from '@/components/editor/PortalsPanel';
+import { PropSettingsPanel } from '@/components/editor/PropSettingsPanel';
 import { TilePanel } from '@/components/editor/TilePanel';
 import { ToolBar } from '@/components/editor/ToolBar';
 import { ZonesPanel } from '@/components/editor/ZonesPanel';
@@ -83,6 +84,20 @@ export default function RoomEdit() {
 
                 <div className="flex w-full flex-col gap-3 overflow-y-auto lg:w-96">
                     <ToolBar tool={ed.tool} onTool={ed.setTool} editorRef={ed.editorRef} />
+                    {/* панель настроек всплывает наверху, когда выделен предмет (при установке или клике) */}
+                    {ed.selectedProp !== null && ed.selectedProp < ed.props.length && (
+                        <PropSettingsPanel
+                            prop={ed.props[ed.selectedProp]}
+                            index={ed.selectedProp}
+                            catalogue={propTypes}
+                            width={ed.width}
+                            height={ed.height}
+                            onRotate={ed.rotateProp}
+                            onPatch={ed.patchProp}
+                            onRemove={ed.removeProp}
+                            onDeselect={() => ed.setSelectedProp(null)}
+                        />
+                    )}
                     <TilePanel brush={ed.brush} tool={ed.tool} onBrush={ed.setBrush} onTool={ed.setTool} />
                     <MapSettingsPanel
                         name={ed.name}
@@ -112,13 +127,9 @@ export default function RoomEdit() {
                         props={ed.props}
                         placingType={ed.placing?.type ?? null}
                         selected={ed.selectedProp}
-                        width={ed.width}
-                        height={ed.height}
                         onPick={ed.pickCatalog}
                         onSelect={ed.setSelectedProp}
-                        onRotate={ed.rotateProp}
                         onRemove={ed.removeProp}
-                        onChange={ed.setProps}
                     />
                     <ObjectsPanel objects={ed.objects} spawn={ed.spawn} width={ed.width} height={ed.height} onChange={ed.setObjects} />
                     <PortalsPanel
