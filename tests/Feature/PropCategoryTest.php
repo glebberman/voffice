@@ -71,17 +71,27 @@ class PropCategoryTest extends TestCase
         $this->assertSame((is_numeric($max) ? (int) $max : 0) + 1, $street->sort);
     }
 
-    public function test_rename_keeps_links(): void
+    public function test_rename_keeps_links_and_place_in_the_axis(): void
     {
         $admin = User::factory()->admin()->create();
         $media = PropCategory::where('axis', 'purpose')->where('slug', 'media')->firstOrFail();
+        $sort = $media->sort;
 
+        // инлайн-переименование шлёт только ярлык — место в оси меняться не должно
         $this->actingAs($admin)
             ->put("/prop-categories/{$media->id}", ['axis' => 'purpose', 'slug' => 'media', 'label' => 'Экраны'])
             ->assertRedirect('/props');
 
         $this->assertSame('Экраны', $media->refresh()->label);
+        $this->assertSame($sort, $media->sort);
         $this->assertSame(['media'], PropType::where('slug', 'tv')->firstOrFail()->categorySlugs('purpose'));
+
+        // а явный sort по-прежнему слушается
+        $this->actingAs($admin)
+            ->put("/prop-categories/{$media->id}", ['axis' => 'purpose', 'slug' => 'media', 'label' => 'Экраны', 'sort' => 9])
+            ->assertRedirect('/props');
+
+        $this->assertSame(9, $media->refresh()->sort);
     }
 
     public function test_deleting_category_detaches_types_but_keeps_them(): void

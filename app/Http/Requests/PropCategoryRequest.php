@@ -42,24 +42,40 @@ class PropCategoryRequest extends FormRequest
     }
 
     /**
-     * Поля категории; без явного sort новая встаёт в конец своей оси.
-     *
      * @return array{axis: string, slug: string, label: string, sort: int}
      */
     public function fields(): array
     {
         $axis = $this->string('axis')->toString();
-        $sort = $this->input('sort');
-        if (! is_int($sort)) {
-            $max = PropCategory::query()->where('axis', $axis)->max('sort');
-            $sort = (is_numeric($max) ? (int) $max : 0) + 1;
-        }
 
         return [
             'axis' => $axis,
             'slug' => $this->string('slug')->toString(),
             'label' => $this->string('label')->toString(),
-            'sort' => $sort,
+            'sort' => $this->sortValue($axis),
         ];
+    }
+
+    /**
+     * Место в оси: явное из запроса, иначе прежнее у существующей категории и
+     * «в конец» у новой. Инлайн-переименование шлёт только {axis, slug, label},
+     * и без этой развилки правка ярлыка каждый раз швыряла бы категорию в конец
+     * оси — тихая порча порядка.
+     */
+    private function sortValue(string $axis): int
+    {
+        $sort = $this->input('sort');
+        if (is_int($sort)) {
+            return $sort;
+        }
+
+        $category = $this->route('prop_category');
+        if ($category instanceof PropCategory) {
+            return $category->sort;
+        }
+
+        $max = PropCategory::query()->where('axis', $axis)->max('sort');
+
+        return (is_numeric($max) ? (int) $max : 0) + 1;
     }
 }
