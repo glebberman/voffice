@@ -86,12 +86,12 @@ function RoomView({ me }: { me: User }) {
         connected,
         statuses,
         myStatus,
-        nearbyObject,
+        interactionHint,
         doorHint,
         yielded,
         takeOver,
-        activeObject,
-        closeObject,
+        activeFrame,
+        closeFrame,
         sendMessage,
         sendRoomMessage,
         sendReaction,
@@ -174,7 +174,7 @@ function RoomView({ me }: { me: User }) {
                         {selfStatus === 'away' && <Badge variant="secondary">Отошёл</Badge>}
                         <div className="ml-auto flex items-center gap-2">
                             <span className="text-muted-foreground hidden text-xs xl:block">
-                                Стрелки/WASD · реакции 1–5 · X — объект и дверь · Shift+X — замок
+                                Стрелки/WASD · реакции 1–5 · X — объект/предмет и дверь · Shift+X — замок
                             </span>
                             {doorHint && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{doorHint}</span>}
                             {canEdit && (
@@ -211,9 +211,9 @@ function RoomView({ me }: { me: User }) {
                             ref={canvasHost}
                             className="border-sidebar-border/70 dark:border-sidebar-border absolute inset-0 overflow-hidden rounded-xl border"
                         />
-                        {nearbyObject && (
+                        {interactionHint && (
                             <div className="bg-background/90 absolute top-3 left-1/2 -translate-x-1/2 rounded-full border px-3 py-1 text-sm shadow-sm backdrop-blur">
-                                <span className="font-semibold">{nearbyObject.label}</span>
+                                <span className="font-semibold">{interactionHint}</span>
                                 <span className="text-muted-foreground"> — нажмите X</span>
                             </div>
                         )}
@@ -374,16 +374,20 @@ function RoomView({ me }: { me: User }) {
                 />
             )}
 
-            <Dialog open={activeObject !== null} onOpenChange={(open) => !open && closeObject()}>
+            <Dialog open={activeFrame !== null} onOpenChange={(open) => !open && closeFrame()}>
                 <DialogContent className="flex h-[80vh] !max-w-4xl flex-col gap-0 p-0">
                     <DialogHeader className="px-4 py-3">
-                        <DialogTitle>{activeObject?.label}</DialogTitle>
+                        <DialogTitle>{activeFrame?.label}</DialogTitle>
                     </DialogHeader>
-                    {activeObject && (
+                    {activeFrame && (
                         <iframe
-                            src={activeObject.url}
-                            title={activeObject.label}
+                            src={activeFrame.url}
+                            title={activeFrame.label}
                             className="h-full w-full rounded-b-lg border-0"
+                            // страница чужая: скрипты ей нужны (YouTube, доска), но угонять
+                            // верхнеуровневое окно нельзя — allow-top-navigation не даём
+                            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                            referrerPolicy="no-referrer"
                             allow="fullscreen"
                         />
                     )}

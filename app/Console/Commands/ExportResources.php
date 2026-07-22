@@ -126,6 +126,9 @@ class ExportResources extends Command
             if ($type->default_state !== null) {
                 $item['defaultState'] = $type->default_state;
             }
+            if ($type->behavior !== null) {
+                $item['behavior'] = $type->behavior;
+            }
             $purposes = $type->categorySlugs('purpose');
             if ($purposes !== []) {
                 $item['purposes'] = $purposes;

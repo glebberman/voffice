@@ -190,6 +190,7 @@
             "label": "Телевизор",
             "description": "Телевизор с состояниями: выключен, без сигнала, включён.",
             "defaultState": "off",
+            "behavior": "embed",
             "purposes": ["media"],
             "roomKinds": ["meeting", "lounge"],
             "orientations": {

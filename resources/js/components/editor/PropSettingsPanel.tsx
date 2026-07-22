@@ -104,8 +104,8 @@ export function PropSettingsPanel({
                         </div>
                     </div>
 
-                    {/* слот форм поведений (embed/switchable) — приедет на этапе C */}
-                    <BehaviorSettings />
+                    {/* настройки поведения предмета (embed → подпись + URL) */}
+                    <BehaviorSettings behavior={spec.behavior} settings={prop.settings} onChange={(settings) => onPatch(index, { settings })} />
                 </>
             ) : (
                 <p className="text-muted-foreground mb-2 text-xs">Тип «{prop.type}» не найден в каталоге — предмет можно только удалить.</p>

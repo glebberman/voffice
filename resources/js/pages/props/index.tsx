@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PROP_BEHAVIOR_LABEL, PROP_BEHAVIORS, type PropBehavior } from '@/game/behaviors';
 import { PROP_DIRS, propSheetUrl, withState, type PropCell, type PropDir, type PropOrientation, type PropStateRegion } from '@/game/props';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
@@ -28,6 +29,7 @@ interface PropTypeRow {
     label: string;
     description: string;
     defaultState: string | null;
+    behavior: PropBehavior | null;
     categoryIds: number[];
     orientations: OrientationRow[];
 }
@@ -45,6 +47,7 @@ interface Draft {
     label: string;
     description: string;
     defaultState: string | null;
+    behavior: PropBehavior | null;
     categoryIds: number[];
     orientations: OrientationRow[];
 }
@@ -57,6 +60,7 @@ const emptyDraft = (sheet: string): Draft => ({
     label: '',
     description: '',
     defaultState: null,
+    behavior: null,
     categoryIds: [],
     orientations: [{ dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0, states: {}, interaction: [] }],
 });
@@ -66,6 +70,7 @@ const draftOf = (type: PropTypeRow): Draft => ({
     label: type.label,
     description: type.description,
     defaultState: type.defaultState,
+    behavior: type.behavior,
     categoryIds: [...type.categoryIds],
     orientations: type.orientations.map((o) => ({ ...o, states: { ...o.states }, interaction: [...o.interaction] })),
 });
@@ -208,6 +213,7 @@ export default function PropsCatalogue() {
             description: draft.description,
             categoryIds: draft.categoryIds,
             defaultState: draft.defaultState,
+            behavior: draft.behavior,
             orientations: draft.orientations.map((o) => ({
                 dir: o.dir,
                 sheet: o.sheet,
@@ -407,6 +413,32 @@ export default function PropsCatalogue() {
                                 </div>
                             );
                         })}
+
+                        {/* поведение: как взаимодействуют с предметом в игре (embed — окно с URL) */}
+                        <div className="mt-2">
+                            <Label className="text-xs">Поведение</Label>
+                            <Select
+                                value={draft.behavior ?? 'none'}
+                                onValueChange={(v) => setDraft((d) => ({ ...d, behavior: v === 'none' ? null : (v as PropBehavior) }))}
+                            >
+                                <SelectTrigger className="mt-1 h-8">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Обычная мебель</SelectItem>
+                                    {PROP_BEHAVIORS.map((b) => (
+                                        <SelectItem key={b} value={b}>
+                                            {PROP_BEHAVIOR_LABEL[b]}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            {draft.behavior !== null && draft.orientations.some((o) => o.interaction.length === 0) && (
+                                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                                    У предмета с поведением нужна зона взаимодействия на каждой стороне.
+                                </p>
+                            )}
+                        </div>
 
                         <Button className="mt-3 w-full" size="sm" onClick={submit} disabled={incomplete}>
                             <Save className="size-3.5" />

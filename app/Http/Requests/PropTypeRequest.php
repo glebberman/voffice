@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\PropOrientation;
+use App\Support\PropBehaviors;
 use App\Support\SpriteSheets;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -39,6 +40,10 @@ class PropTypeRequest extends FormRequest
             'categoryIds.*' => ['integer', Rule::exists('prop_categories', 'id')],
             // что рисуется, пока предметом не пользуются; null = состояний нет
             'defaultState' => ['present', 'nullable', 'string', 'max:64', 'regex:'.self::NAME_REGEX],
+            // поведение: как взаимодействуют с предметом; null = обычная мебель.
+            // present, а не sometimes: typeFields() пишет поле всегда, и запрос
+            // без ключа молча обнулял бы поведение существующего типа
+            'behavior' => ['present', 'nullable', 'string', Rule::in(PropBehaviors::ALL)],
             // ориентации приходят полным набором: чего нет в запросе, того у
             // типа больше нет
             'orientations' => ['required', 'array', 'min:1', 'max:'.count(PropOrientation::DIRS)],
@@ -83,6 +88,7 @@ class PropTypeRequest extends FormRequest
         return [
             function (Validator $validator): void {
                 $names = null;
+                $behavior = $this->validatedBehavior();
 
                 foreach ($this->orientationFields() as $i => $orientation) {
                     // базовый регион не должен вылезать за пределы своего листа
@@ -110,6 +116,12 @@ class PropTypeRequest extends FormRequest
 
                     // клетки зоны — без дублей и не поверх основания (на нём не стоят)
                     $this->assertInteraction($validator, $i, $orientation['w'], $orientation['h']);
+
+                    // с предметом взаимодействуют, стоя в зоне: поведение без зоны
+                    // недостижимо, поэтому у интерактивного типа зона обязательна
+                    if ($behavior !== null && $orientation['interaction'] === []) {
+                        $validator->errors()->add("orientations.{$i}.interaction", 'У предмета с поведением должна быть зона взаимодействия');
+                    }
                 }
 
                 $default = $this->validatedDefaultState();
@@ -282,8 +294,15 @@ class PropTypeRequest extends FormRequest
         return is_string($value) && $value !== '' ? $value : null;
     }
 
+    private function validatedBehavior(): ?string
+    {
+        $value = $this->input('behavior');
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
     /**
-     * @return array{slug: string, label: string, description: string, default_state: string|null}
+     * @return array{slug: string, label: string, description: string, default_state: string|null, behavior: string|null}
      */
     public function typeFields(): array
     {
@@ -294,6 +313,7 @@ class PropTypeRequest extends FormRequest
             'label' => $this->string('label')->toString(),
             'description' => is_string($description) ? $description : '',
             'default_state' => $this->validatedDefaultState(),
+            'behavior' => $this->validatedBehavior(),
         ];
     }
 

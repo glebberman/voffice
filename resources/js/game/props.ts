@@ -1,3 +1,4 @@
+import type { PropBehavior } from './behaviors';
 import { TILE } from './map';
 
 // Каталог предметов приходит с сервера (таблицы prop_types/prop_orientations,
@@ -52,6 +53,7 @@ export interface PropSpec {
     label: string;
     description?: string; // текст карточки каталога
     defaultState?: string | null; // что рисуется, пока предметом не пользуются
+    behavior?: PropBehavior | null; // как взаимодействуют; null/нет = обычная мебель
     purposes?: string[]; // слоги категорий оси «назначение»
     roomKinds?: string[]; // слоги категорий оси «тип помещения»
     orientations: Partial<Record<PropDir, PropOrientation>>;

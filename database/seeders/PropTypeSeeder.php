@@ -33,10 +33,12 @@ class PropTypeSeeder extends Seeder
 
             $default = $spec['defaultState'] ?? null;
             $description = $spec['description'] ?? '';
+            $behavior = $spec['behavior'] ?? null;
             $type = PropType::updateOrCreate(['slug' => (string) $slug], [
                 'label' => $spec['label'],
                 'description' => is_string($description) ? $description : '',
                 'default_state' => is_string($default) ? $default : null,
+                'behavior' => is_string($behavior) ? $behavior : null,
             ]);
 
             $type->categories()->sync($this->categoryIdsOf($spec, $categoryIds));

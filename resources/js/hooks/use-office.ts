@@ -1,5 +1,16 @@
 import type { AvatarConfig } from '@/game/avatar';
-import { makeMap, tilesBetween, type DoorData, type DoorState, type MapData, type MapObjectData, type PortalData, type Zone } from '@/game/map';
+import { parseEmbedSettings, type EmbedSettings } from '@/game/behaviors';
+import {
+    makeMap,
+    tilesBetween,
+    type DoorData,
+    type DoorState,
+    type InteractionTarget,
+    type MapData,
+    type MapObjectData,
+    type PortalData,
+    type Zone,
+} from '@/game/map';
 import { findStep } from '@/game/path';
 import type { PropCatalogue } from '@/game/props';
 import { OfficeScene } from '@/game/scene';
@@ -74,6 +85,18 @@ const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
     right: { dx: 1, dy: 0 },
 };
 
+/**
+ * Подпись для подсказки/модалки интерактивного предмета — по поведению. null,
+ * если предмету пока нечем ответить (embed без настроек): тогда ни подсказки,
+ * ни подсветки, ни реакции на X. switchable подключится с VOF-31.
+ */
+function interactionLabel(target: InteractionTarget): string | null {
+    if (target.spec.behavior === 'embed') {
+        return parseEmbedSettings(target.prop.settings)?.label ?? null;
+    }
+    return null;
+}
+
 export interface OfficeOptions {
     roomId: number;
     map: MapData;
@@ -96,12 +119,14 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const [connected, setConnected] = useState(false);
     const [statuses, setStatuses] = useState<Record<number, PlayerStatus>>({});
     const [myStatus, setMyStatusState] = useState<ManualStatus>('available');
-    const [nearbyObject, setNearbyObject] = useState<MapObjectData | null>(null);
+    // подсказка «{label} — нажмите X»: ближайший объект или интерактивный предмет
+    const [interactionHint, setInteractionHint] = useState<string | null>(null);
     // короткое «Заперто» под картой, когда дверь не поддалась
     const [doorHint, setDoorHint] = useState<string | null>(null);
     // офис открыт в другой вкладке: эта замолчала и ничего не отправляет
     const [yielded, setYielded] = useState(false);
-    const [activeObject, setActiveObject] = useState<MapObjectData | null>(null);
+    // открытая iframe-модалка: и старые map.objects, и embed-предметы дают {label, url}
+    const [activeFrame, setActiveFrame] = useState<EmbedSettings | null>(null);
 
     // звонок по близости (WebRTC)
     const [inCall, setInCall] = useState(false);
@@ -141,7 +166,11 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const yieldedRef = useRef(false);
     const takeOverRef = useRef<() => void>(() => undefined);
     const nearbyObjectRef = useRef<MapObjectData | null>(null);
-    const activeObjectRef = useRef<MapObjectData | null>(null);
+    // интерактивный предмет, в зоне которого стоим (для X)
+    const nearbyInteractionRef = useRef<InteractionTarget | null>(null);
+    // чья зона сейчас подсвечена — чтобы не перерисовывать её на каждом шаге
+    const highlightedPropRef = useRef<string | null>(null);
+    const activeFrameRef = useRef<EmbedSettings | null>(null);
     const portalTriggeredRef = useRef(false);
     const onPortalRef = useRef(options.onPortal);
     onPortalRef.current = options.onPortal;
@@ -198,14 +227,30 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         [map],
     );
 
-    const updateNearbyObject = useCallback(
+    // ближайшая интерактивная штука: объект (радиус 1.6) или предмет (клетка зоны)
+    const updateNearby = useCallback(
         (x: number, y: number) => {
             const obj = map.nearestObject(x, y);
             if (obj?.id !== nearbyObjectRef.current?.id) {
                 nearbyObjectRef.current = obj;
-                setNearbyObject(obj);
                 sceneRef.current?.setObjectHighlight(obj?.id ?? null);
             }
+            // предмет считаем интерактивным, только если поведению есть чем ответить
+            const raw = map.interactableAt(x, y);
+            const target = raw && interactionLabel(raw) !== null ? raw : null;
+            if (target?.prop.id !== nearbyInteractionRef.current?.prop.id) {
+                nearbyInteractionRef.current = target;
+            }
+            // подсвечиваем зону, только когда X сработает именно по предмету:
+            // у объекта приоритет, иначе зелёная зона обманывала бы
+            const lit = obj ? null : target;
+            if ((lit?.prop.id ?? null) !== highlightedPropRef.current) {
+                highlightedPropRef.current = lit?.prop.id ?? null;
+                sceneRef.current?.setInteractionHighlight(lit?.cells ?? null);
+            }
+            // подсказка: объект приоритетнее (он «в радиусе»), иначе предмет
+            const hint = obj?.label ?? (target ? interactionLabel(target) : null);
+            setInteractionHint((prev) => (prev === hint ? prev : hint));
         },
         [map],
     );
@@ -608,7 +653,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 const me = self();
                 upsert(me);
                 setZone(map.zoneAt(me.x, me.y));
-                updateNearbyObject(me.x, me.y);
+                updateNearby(me.x, me.y);
                 for (const m of members) {
                     if (m.id !== me.id && !playersRef.current.has(m.id)) {
                         upsert({ ...m, x: map.spawn.x, y: map.spawn.y, dir: 'down', status: 'available' });
@@ -786,7 +831,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 me.x = nx;
                 me.y = ny;
                 setZone(map.zoneAt(nx, ny));
-                updateNearbyObject(nx, ny);
+                updateNearby(nx, ny);
 
                 const portal = map.portalAt(nx, ny);
                 if (portal && !portalTriggeredRef.current) {
@@ -812,6 +857,12 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             recomputeCall(); // мой сдвиг мог изменить состав звонка
         };
 
+        // открыть iframe-модалку (объект или embed-предмет дают {label, url})
+        const openFrame = (frame: EmbedSettings) => {
+            activeFrameRef.current = frame;
+            setActiveFrame(frame);
+        };
+
         const onKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement | null;
             if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
@@ -819,20 +870,29 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             }
             markActivity();
 
-            // пока открыта модалка объекта, игровые клавиши не работают
-            if (activeObjectRef.current) {
+            // пока открыта iframe-модалка, игровые клавиши не работают
+            if (activeFrameRef.current) {
                 return;
             }
 
-            // X — взаимодействие с ближайшим объектом, а если объекта нет, то
-            // с дверью рядом. Shift+X — замок.
-            if (e.code === 'KeyX') {
-                if (nearbyObjectRef.current && !e.shiftKey) {
+            // X — взаимодействие: ближайший объект → интерактивный предмет →
+            // дверь рядом. Shift+X — замок двери.
+            if (e.code === 'KeyX' && !e.shiftKey) {
+                const obj = nearbyObjectRef.current;
+                if (obj) {
                     e.preventDefault();
-                    activeObjectRef.current = nearbyObjectRef.current;
-                    setActiveObject(nearbyObjectRef.current);
+                    openFrame({ label: obj.label, url: obj.url });
                     return;
                 }
+                const target = nearbyInteractionRef.current;
+                const embed = target ? parseEmbedSettings(target.prop.settings) : null;
+                if (embed) {
+                    e.preventDefault();
+                    openFrame(embed);
+                    return;
+                }
+            }
+            if (e.code === 'KeyX') {
                 const me = playersRef.current.get(userRef.current.id);
                 if (me && nearestDoorRef.current(me.x, me.y)) {
                     e.preventDefault();
@@ -906,6 +966,11 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         };
 
         const moveLoop = setInterval(() => {
+            // модалка открыта: не двигаемся ни зажатой клавишей, ни «следованием»
+            // (onKeyDown гасит только новое нажатие, а клавишу могли зажать до X)
+            if (activeFrameRef.current) {
+                return;
+            }
             const dir = pressedRef.current.at(-1);
             if (dir) {
                 tryStep(dir);
@@ -1020,9 +1085,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         broadcastStatusRef.current();
     }, []);
 
-    const closeObject = useCallback(() => {
-        activeObjectRef.current = null;
-        setActiveObject(null);
+    const closeFrame = useCallback(() => {
+        activeFrameRef.current = null;
+        setActiveFrame(null);
     }, []);
 
     const locatePlayer = useCallback((id: number) => {
@@ -1078,12 +1143,12 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         connected,
         statuses,
         myStatus,
-        nearbyObject,
+        interactionHint,
         doorHint,
         yielded,
         takeOver: () => takeOverRef.current(),
-        activeObject,
-        closeObject,
+        activeFrame,
+        closeFrame,
         sendMessage,
         sendRoomMessage,
         sendReaction,

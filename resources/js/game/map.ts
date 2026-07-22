@@ -1,4 +1,4 @@
-import { propOrientation, type PropCatalogue, type PropDir, type PropOrientation } from './props';
+import { propInteractionCells, propOrientation, type PropCatalogue, type PropDir, type PropOrientation, type PropSpec } from './props';
 
 // Карта комнаты приезжает с сервера (rooms.map, исходники в resources/maps/*.json).
 // Каждый символ — тайл 32×32:
@@ -62,6 +62,9 @@ export interface PropData {
     x: number; // левый верхний тайл ОСНОВАНИЯ
     y: number;
     dir?: PropDir; // сторона, которой стоит предмет; отсутствие означает south
+    // настройки поведения инстанса (embed → {label, url}); нет = не настроен.
+    // Форму на веру не берём — разбирают parse-функции из game/behaviors.ts
+    settings?: Record<string, string>;
 }
 
 /** Сторона двери: с неё запирают и отпирают. */
@@ -183,6 +186,16 @@ export function tilesBetween(ax: number, ay: number, bx: number, by: number): nu
     return Math.hypot(ax - bx, ay - by);
 }
 
+/**
+ * Интерактивный предмет под клеткой зоны: сам предмет, его спека (там поведение)
+ * и абсолютные клетки зоны — для подсказки и подсветки в игре.
+ */
+export interface InteractionTarget {
+    prop: PropData;
+    spec: PropSpec;
+    cells: { x: number; y: number }[];
+}
+
 export interface GameMap {
     rows: string[];
     width: number;
@@ -218,6 +231,8 @@ export interface GameMap {
     resolveSpawn(stored: { x: number; y: number } | null | undefined): { x: number; y: number };
     portalAt(x: number, y: number): PortalData | null;
     nearestObject(x: number, y: number): MapObjectData | null;
+    /** Интерактивный предмет, в зоне которого стоит клетка (x,y), или null. */
+    interactableAt(x: number, y: number): InteractionTarget | null;
 }
 
 /**
@@ -261,6 +276,29 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
             }
         }
     }
+
+    // Индекс зон взаимодействия: клетка → интерактивный предмет. Только у
+    // предметов с поведением и непустой зоной; клетки зоны берём у ориентации.
+    // При наложении зон выигрывает последний (нарисован поверх, как propAt).
+    const interactables = new Map<number, InteractionTarget>();
+    for (const prop of props) {
+        const spec = catalogue[prop.type];
+        const orientation = orientationFor(prop);
+        if (!spec?.behavior || !orientation) {
+            continue;
+        }
+        const cells = propInteractionCells(orientation, prop);
+        if (cells.length === 0) {
+            continue;
+        }
+        const target: InteractionTarget = { prop, spec, cells };
+        for (const cell of cells) {
+            if (cell.x >= 0 && cell.y >= 0 && cell.x < width && cell.y < height) {
+                interactables.set(cell.y * width + cell.x, target);
+            }
+        }
+    }
+    const interactableAt = (x: number, y: number): InteractionTarget | null => interactables.get(y * width + x) ?? null;
 
     // Двери: описание берём из карты, а состояние (открыта/заперта) живёт
     // отдельно и меняется в рантайме — поэтому здесь оно мутабельное.
@@ -429,5 +467,6 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
             }
             return best;
         },
+        interactableAt,
     };
 }

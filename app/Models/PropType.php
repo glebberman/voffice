@@ -21,11 +21,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @phpstan-type StateRegion array{sheet: string, sx: int, sy: int}
  * @phpstan-type InteractionCell array{dx: int, dy: int}
  * @phpstan-type OrientationSpec array{sheet: string, sx: int, sy: int, w: int, h: int, tall: int, states: array<string, StateRegion>, interaction: list<InteractionCell>}
- * @phpstan-type PropSpec array{label: string, description: string, defaultState: string|null, purposes: list<string>, roomKinds: list<string>, orientations: array<string, OrientationSpec>}
+ * @phpstan-type PropSpec array{label: string, description: string, defaultState: string|null, behavior: string|null, purposes: list<string>, roomKinds: list<string>, orientations: array<string, OrientationSpec>}
  */
 class PropType extends Model
 {
-    protected $fillable = ['slug', 'label', 'default_state', 'description'];
+    protected $fillable = ['slug', 'label', 'default_state', 'description', 'behavior'];
 
     /**
      * @return HasMany<PropOrientation, $this>
@@ -89,6 +89,7 @@ class PropType extends Model
                 'label' => $type->label,
                 'description' => $type->description,
                 'defaultState' => $type->default_state,
+                'behavior' => $type->behavior,
                 'purposes' => $type->categorySlugs('purpose'),
                 'roomKinds' => $type->categorySlugs('room'),
                 'orientations' => $orientations,

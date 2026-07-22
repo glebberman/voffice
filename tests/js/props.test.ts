@@ -268,6 +268,27 @@ describe('зона взаимодействия', () => {
     });
 });
 
+describe('интерактивные предметы (поведение)', () => {
+    it('embed-предмет отвечает в клетках своей зоны', () => {
+        // телевизор из каталога — behavior embed, зона перед экраном
+        const map = makeMap(baseMap([{ id: 'tv1', type: 'tv', x: 2, y: 3 }]), PROP_SPECS);
+        const front = map.interactableAt(2, 4);
+
+        expect(front?.prop.type).toBe('tv');
+        expect(front?.spec.behavior).toBe('embed');
+        expect(front?.cells.length).toBeGreaterThan(0);
+        expect(map.interactableAt(2, 3)).toBeNull(); // основание — не зона
+        expect(map.interactableAt(6, 6)).toBeNull(); // пустая клетка
+    });
+
+    it('обычная мебель без поведения не интерактивна', () => {
+        const map = makeMap(baseMap([{ id: 'c', type: 'cabinet', x: 2, y: 4 }]), PROP_SPECS);
+
+        expect(map.interactableAt(2, 5)).toBeNull();
+        expect(map.interactableAt(2, 4)).toBeNull();
+    });
+});
+
 describe('состояния предмета', () => {
     it('withState подменяет регион, сохраняя геометрию ориентации', () => {
         // телевизор из каталога: включённый — регион шума во втором ряду листа

@@ -44,11 +44,19 @@
 | `label`         | string           | название в палитре редактора                      |
 | `description`   | text             | текст карточки каталога                           |
 | `default_state` | string, nullable | что рисуется по умолчанию; null = состояний нет   |
+| `behavior`      | string, nullable | как взаимодействуют: `embed` / …; null = мебель   |
 | `timestamps`    |                  |                                                   |
 
 Стартовое наполнение — `PropTypeSeeder` из `resources/props.json`; дальше
 каталог правится на странице `/props` (см.
 [как завести предмет](../how-to/zavesti-predmet.md)).
+
+`behavior` — реестр в коде (`App\Support\PropBehaviors`, `game/behaviors.ts`), в
+БД только имя. Первое поведение — `embed` (встраиваемый URL: доска/видео/карта
+внутри предмета). Настройки инстанса живут в карте у предмета
+(`props[].settings`, для embed — `{label, url}`), а не на типе: у каждой
+поставленной доски свой адрес. Тип с поведением обязан иметь зону взаимодействия
+(иначе к нему не подойти) — держит `PropTypeRequest`.
 
 ## `prop_orientations`
 

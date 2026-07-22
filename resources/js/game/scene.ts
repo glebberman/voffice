@@ -109,6 +109,8 @@ export class OfficeScene {
     private maskLayer = new Container();
     private overheadPieces = new Set<OverheadPiece>();
     private proximityRing = new Graphics();
+    // светло-зелёная подсветка зоны интерактивного предмета, когда стоишь в ней
+    private interactionHighlight = new Graphics();
     private doorLayer = new Container(); // двери — над полом, под игроками
     private doorNodes = new Map<string, Graphics>();
     // Тень над всем, куда персонажу не дойти: там не видно, что происходит.
@@ -176,6 +178,7 @@ export class OfficeScene {
         // порядок слоёв: карта → зоны → порталы → кольцо → основания предметов
         // → игроки → высокие части (overhead) → объекты
         this.world.addChild(this.mapLayer);
+        this.world.addChild(this.interactionHighlight); // на полу, под игроками
         this.drawZoneLabels();
         this.drawPortals();
         this.world.addChild(this.proximityRing);
@@ -873,6 +876,14 @@ export class OfficeScene {
             const active = objectId === id;
             node.ring.visible = active;
             node.icon.scale.set(active ? 1.25 : 1);
+        }
+    }
+
+    /** Светло-зелёная заливка клеток зоны предмета, в которой стоит персонаж. */
+    setInteractionHighlight(cells: { x: number; y: number }[] | null): void {
+        this.interactionHighlight.clear();
+        for (const cell of cells ?? []) {
+            this.interactionHighlight.rect(cell.x * TILE, cell.y * TILE, TILE, TILE).fill({ color: 0x22c55e, alpha: 0.22 });
         }
     }
 

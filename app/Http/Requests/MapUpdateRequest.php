@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\PropOrientation;
 use App\Models\PropType;
+use App\Support\PropBehaviors;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -151,6 +152,9 @@ class MapUpdateRequest extends FormRequest
             'map.props.*.y' => ['required', 'integer', 'min:0'],
             // сторона, которой стоит предмет; отсутствие означает south
             'map.props.*.dir' => ['sometimes', 'string', Rule::in(PropOrientation::DIRS)],
+            // настройки инстанса поведения (embed → {label, url}); форму по
+            // поведению типа проверяет after() через PropBehaviors
+            'map.props.*.settings' => ['sometimes', 'array'],
             // двери: стоят на проходимом тайле, замок — на одной из сторон
             'map.doors' => ['sometimes', 'array', 'max:500'],
             'map.doors.*.id' => ['required', 'string', 'max:64'],
@@ -251,6 +255,17 @@ class MapUpdateRequest extends FormRequest
                     $spec = is_string($type) ? ($catalogue[$type] ?? null) : null;
                     if ($spec === null) {
                         continue; // недопустимый тип уже поймали правила выше
+                    }
+
+                    // настройки инстанса — по поведению типа (embed → {label, url});
+                    // отсутствие настроек допустимо: предмет просто неинтерактивен.
+                    // Проверяем до геометрии: ниже есть continue-ветки, а настройки
+                    // от ориентации не зависят ($prop здесь уже массив — иначе $spec был бы null)
+                    $settings = $prop['settings'] ?? null;
+                    if ($settings !== null) {
+                        foreach (PropBehaviors::settingsErrors($spec['behavior'], $settings) as $message) {
+                            $validator->errors()->add("map.props.{$i}.settings", $message);
+                        }
                     }
                     $dirRaw = $prop['dir'] ?? null;
                     $dir = is_string($dirRaw) ? $dirRaw : null;

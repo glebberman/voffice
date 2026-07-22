@@ -201,4 +201,43 @@ class MapEditorTest extends TestCase
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $noRoom])
             ->assertSessionHasErrors('map.props.0');
     }
+
+    public function test_prop_embed_settings_are_validated(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $map = $this->validMap();
+        $map['rows'] = ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'];
+        $map['spawn'] = ['x' => 3, 'y' => 4];
+        // телевизор — тип с поведением embed (см. props.json)
+        $tv = ['id' => 'tv1', 'type' => 'tv', 'x' => 2, 'y' => 5];
+        $withProp = fn (array $prop): array => array_merge($map, ['props' => [$prop]]);
+
+        // валидные настройки embed сохраняются вместе с картой
+        $ok = $withProp($tv + ['settings' => ['label' => 'Доска', 'url' => 'https://example.com']]);
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'Офис', 'map' => $ok])->assertRedirect('/rooms/office');
+        $this->assertSame(['label' => 'Доска', 'url' => 'https://example.com'], $this->office->fresh()->map['props'][0]['settings'] ?? null);
+
+        // битый URL — ошибка
+        $badUrl = $withProp($tv + ['settings' => ['label' => 'Доска', 'url' => 'не-адрес']]);
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $badUrl])->assertSessionHasErrors('map.props.0.settings');
+
+        // адрес уезжает в iframe: не-http(s) схемы отклоняем (filter_var их пропускал)
+        foreach (['javascript://c%0aalert(1)', 'file:///etc/passwd', 'foo://bar'] as $scheme) {
+            $this->actingAs($admin)
+                ->put('/rooms/office', ['name' => 'X', 'map' => $withProp($tv + ['settings' => ['label' => 'Доска', 'url' => $scheme]])])
+                ->assertSessionHasErrors('map.props.0.settings');
+        }
+
+        // недозаполненная форма (адрес ещё пуст) не должна блокировать сохранение карты
+        $draft = $withProp($tv + ['settings' => ['label' => 'Доска', 'url' => '']]);
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'Офис', 'map' => $draft])->assertRedirect('/rooms/office');
+
+        // настройки у предмета без поведения не нужны
+        $onPlain = $withProp(['id' => 'c1', 'type' => 'cabinet', 'x' => 2, 'y' => 5, 'settings' => ['label' => 'X', 'url' => 'https://example.com']]);
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $onPlain])->assertSessionHasErrors('map.props.0.settings');
+
+        // без настроек предмет валиден — просто неинтерактивен
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'Офис', 'map' => $withProp($tv)])->assertRedirect('/rooms/office');
+    }
 }

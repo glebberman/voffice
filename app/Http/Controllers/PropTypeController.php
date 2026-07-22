@@ -52,6 +52,7 @@ class PropTypeController extends Controller
                 'label' => $type->label,
                 'description' => $type->description,
                 'defaultState' => $type->default_state,
+                'behavior' => $type->behavior,
                 'categoryIds' => $type->categories->map(fn (PropCategory $c): int => $c->id)->all(),
                 'orientations' => $orientations,
             ];

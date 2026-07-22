@@ -249,7 +249,11 @@
             "id": "tv-17",
             "type": "tv",
             "x": 8,
-            "y": 33
+            "y": 33,
+            "settings": {
+                "label": "Лаунж-ТВ",
+                "url": "https://www.youtube.com/embed/jNQXAC9IVRw"
+            }
         },
         {
             "id": "coffee-maker-18",

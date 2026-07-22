@@ -39,6 +39,7 @@ class PropTypeTest extends TestCase
             'label' => 'Стеллаж',
             'description' => '',
             'defaultState' => null,
+            'behavior' => null,
             'orientations' => [
                 array_merge([
                     'dir' => 'south',
@@ -356,6 +357,26 @@ class PropTypeTest extends TestCase
         $this->actingAs($admin)
             ->post('/props', $this->validType([], ['interaction' => [['dx' => 9, 'dy' => 0]]]))
             ->assertSessionHasErrors('orientations.0.interaction.0.dx');
+    }
+
+    public function test_behavior_persists_and_requires_interaction_zone(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // поведение + зона взаимодействия — сохраняется
+        $ok = $this->validType(['behavior' => 'embed'], ['interaction' => [['dx' => 0, 'dy' => 2]]]);
+        $this->actingAs($admin)->post('/props', $ok)->assertRedirect('/props');
+        $this->assertSame('embed', PropType::where('slug', 'bookshelf')->firstOrFail()->behavior);
+
+        // поведение без зоны недостижимо — отклоняем
+        $this->actingAs($admin)
+            ->post('/props', $this->validType(['slug' => 'shelf2', 'behavior' => 'embed']))
+            ->assertSessionHasErrors('orientations.0.interaction');
+
+        // неизвестное поведение — отклоняем
+        $this->actingAs($admin)
+            ->post('/props', $this->validType(['slug' => 'shelf3', 'behavior' => 'teleport']))
+            ->assertSessionHasErrors('behavior');
     }
 
     public function test_map_accepts_existing_direction_and_rejects_missing_one(): void
