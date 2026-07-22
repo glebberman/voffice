@@ -21,13 +21,25 @@ export interface TabHello {
     tab: string;
 }
 
+/** Окно, внутри которого два «привет» считаются одновременными. */
+export const HELLO_RACE_MS = 2000;
+
 /**
  * Уступить ли управление пришедшему приветствию.
  *
- * Здоровается только что открытая вкладка, поэтому «кто новее» выяснять не
- * нужно: если приветствие от нашего же пользователя и не от нас — уступаем.
+ * Здоровается только что открытая вкладка, поэтому обычно «кто новее» выяснять
+ * не нужно: приветствие от нашего же пользователя и не от нас — уступаем.
  * Приветствия других людей не трогают ничего.
+ *
+ * Исключение — восстановление сессии браузера: вкладки открываются разом, и
+ * каждая получает чужое «привет» сразу после своего. Уступив обе, управления не
+ * осталось бы ни у кого. В этом окне решает сравнение идентификаторов вкладок —
+ * оно симметрично и оставляет ровно одного победителя.
  */
-export function shouldYieldTo(hello: TabHello, selfId: number, myTab: string): boolean {
-    return hello.id === selfId && hello.tab !== myTab;
+export function shouldYieldTo(hello: TabHello, selfId: number, myTab: string, msSinceMyHello = Infinity): boolean {
+    if (hello.id !== selfId || hello.tab === myTab) {
+        return false;
+    }
+
+    return msSinceMyHello > HELLO_RACE_MS || myTab < hello.tab;
 }

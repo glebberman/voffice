@@ -19,6 +19,19 @@ describe('одна вкладка на пользователя', () => {
         expect(shouldYieldTo({ id: 42, tab: myTab }, me, myTab)).toBe(false);
     });
 
+    it('открывшиеся разом вкладки не замолкают обе', () => {
+        // восстановление сессии браузера: каждая получает чужое «привет» сразу
+        // после своего — уступает ровно одна, по сравнению идентификаторов
+        const justNow = 100;
+        expect(shouldYieldTo({ id: me, tab: 'tab-b' }, me, 'tab-a', justNow)).toBe(true);
+        expect(shouldYieldTo({ id: me, tab: 'tab-a' }, me, 'tab-b', justNow)).toBe(false);
+    });
+
+    it('давно открытая вкладка уступает новой без сравнений', () => {
+        // 'tab-z' > 'tab-a', но мы здоровались давно — значит новая та, другая
+        expect(shouldYieldTo({ id: me, tab: 'tab-a' }, me, 'tab-z', 60_000)).toBe(true);
+    });
+
     it('идентификаторы вкладок различаются', () => {
         const ids = new Set([newTabId(), newTabId(), newTabId()]);
 

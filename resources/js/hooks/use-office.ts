@@ -160,6 +160,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     // Управление держит вкладка, открытая последней. Идентификатор живёт
     // столько же, сколько страница, и отличает нас от других своих вкладок.
     const tabIdRef = useRef(newTabId());
+    // когда эта вкладка здоровалась: два «привет» подряд — открылись разом
+    const helloAtRef = useRef(0);
     const yieldedRef = useRef(false);
     const takeOverRef = useRef<() => void>(() => undefined);
     // интерактивный предмет, в зоне которого стоим (для X)
@@ -362,6 +364,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
 
         /** Здоровается новая вкладка — остальные вкладки этого юзера замолкают. */
         const helloFromThisTab = () => {
+            helloAtRef.current = Date.now();
             channel.whisper('hello', { id: userRef.current.id, tab: tabIdRef.current } satisfies TabHello);
         };
 
@@ -684,7 +687,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             })
             // другая вкладка этого же пользователя взяла управление
             .listenForWhisper('hello', (p: TabHello) => {
-                if (shouldYieldTo(p, userRef.current.id, tabIdRef.current)) {
+                if (shouldYieldTo(p, userRef.current.id, tabIdRef.current, Date.now() - helloAtRef.current)) {
                     yieldControl();
                 }
             })
@@ -915,11 +918,16 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         };
 
         const onKeyDown = (e: KeyboardEvent) => {
+            markActivity(); // набор в чате — тоже активность, иначе статус уходит в «Отошёл» посреди переписки
+
             const target = e.target as HTMLElement | null;
             if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
                 return;
             }
-            markActivity();
+            // клавишу уже забрал оверлей (стрелки в открытом селекте) — не наша
+            if (e.defaultPrevented) {
+                return;
+            }
 
             // пока открыта iframe-модалка, игровые клавиши не работают
             if (activeFrameRef.current) {

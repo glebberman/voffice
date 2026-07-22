@@ -146,8 +146,16 @@ export function SheetCropper({
         const perPixel = rect.width / canvas.width; // экранных px на один px канваса
         const px = (e.clientX - rect.left) / perPixel / ZOOM;
         const py = (e.clientY - rect.top) / perPixel / ZOOM;
+        // Протяжка часто уходит за край канваса, а отрицательный sx всплывал бы
+        // только при сохранении — зажимаем в границы листа сразу.
+        const cols = Math.max(1, Math.floor(imageSize.width / TILE));
+        const rows = Math.max(1, Math.floor(imageSize.height / TILE));
 
-        return { x: Math.floor(px / TILE), y: Math.floor(py / TILE), py };
+        return {
+            x: Math.max(0, Math.min(cols - 1, Math.floor(px / TILE))),
+            y: Math.max(0, Math.min(rows - 1, Math.floor(py / TILE))),
+            py: Math.max(0, Math.min(imageSize.height, py)),
+        };
     };
 
     // рамка фиксированного размера встаёт левым верхним углом в тайл, не
