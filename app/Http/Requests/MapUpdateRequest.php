@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\PropOrientation;
 use App\Models\PropType;
+use App\Support\MapLimits;
 use App\Support\PropBehaviors;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -107,8 +108,8 @@ class MapUpdateRequest extends FormRequest
             // Предел 512×512 = 262 тыс. тайлов. Выше — уже неадекватно по памяти
             // клиента; ниже упираться незачем: канвас-вьюпорт и чанковый рендер
             // не зависят от размера карты.
-            'map.rows' => ['required', 'array', 'min:1', 'max:512'],
-            'map.rows.*' => ['required', 'string', 'max:512'],
+            'map.rows' => ['required', 'array', 'min:1', 'max:'.MapLimits::MAX_SIZE],
+            'map.rows.*' => ['required', 'string', 'max:'.MapLimits::MAX_SIZE],
             'map.spawn' => ['required', 'array'],
             'map.spawn.x' => ['required', 'integer', 'min:0'],
             'map.spawn.y' => ['required', 'integer', 'min:0'],

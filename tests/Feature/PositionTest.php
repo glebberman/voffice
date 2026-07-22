@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Room;
 use App\Models\User;
+use App\Support\MapLimits;
 use Database\Seeders\RoomSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -49,6 +50,24 @@ class PositionTest extends TestCase
         $this->actingAs($user)->postJson('/position', ['x' => 5, 'room_id' => $this->office->id])->assertUnprocessable();
         $this->actingAs($user)->postJson('/position', ['x' => 5, 'y' => 5, 'room_id' => 999])->assertUnprocessable();
         $this->actingAs($user)->postJson('/position', ['x' => 5, 'y' => 5])->assertUnprocessable();
+        // за краем самой большой допустимой карты
+        $this->actingAs($user)
+            ->postJson('/position', ['x' => MapLimits::MAX_SIZE, 'y' => 5, 'room_id' => $this->office->id])
+            ->assertUnprocessable();
+    }
+
+    public function test_position_is_saved_at_the_far_edge_of_the_biggest_map(): void
+    {
+        $user = User::factory()->create();
+        $edge = MapLimits::MAX_COORD;
+
+        $this->actingAs($user)
+            ->postJson('/position', ['x' => $edge, 'y' => $edge, 'room_id' => $this->office->id])
+            ->assertNoContent();
+
+        $user->refresh();
+        $this->assertSame($edge, $user->last_x);
+        $this->assertSame($edge, $user->last_y);
     }
 
     public function test_room_page_passes_position_only_for_the_same_room(): void
