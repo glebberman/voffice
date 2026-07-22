@@ -184,6 +184,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const screenStreamRef = useRef<MediaStream | null>(null);
     const inCallRef = useRef<Set<number>>(new Set());
     const metersRef = useRef<Map<number, AudioMeter>>(new Map());
+    // пересчитать состав звонка извне эффекта: состояние двери меняет видимость
+    const recomputeCallRef = useRef<(() => void) | null>(null);
     const callApiRef = useRef<{
         join: () => Promise<void>;
         leave: () => void;
@@ -273,6 +275,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                     y: me.y,
                 });
                 sceneRef.current?.setDoorState(next.id, { closed: next.closed, locked: next.locked });
+                recomputeCallRef.current?.(); // закрылась дверь — звонок сквозь неё пора рвать
                 setDoorHint(null);
             } catch {
                 // сервер отказал: заперто, замок с другой стороны или не дотянуться
@@ -500,6 +503,8 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             mesh.updatePeers(desired);
             updateVolumes(me, desired);
         };
+
+        recomputeCallRef.current = recomputeCall;
 
         const isInCall = () => inCallRef.current.has(userRef.current.id);
 
@@ -769,6 +774,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             // дверь дёрнул кто-то из комнаты (see DoorChanged)
             .listen('.door.changed', (p: { id: string; closed: boolean; locked: boolean }) => {
                 sceneRef.current?.setDoorState(p.id, { closed: p.closed, locked: p.locked });
+                // видимость изменилась — иначе состав звонка догонял бы её
+                // только со следующим heartbeat, до ~5 с сквозь закрытую дверь
+                recomputeCall();
             })
             // предмет переключил кто-то из комнаты (see PropChanged); своё эхо
             // тоже приходит — оно лишь подтверждает уже применённое
@@ -1075,6 +1083,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             inCall.clear();
             meshRef.current = null;
             callApiRef.current = null;
+            recomputeCallRef.current = null;
             resizeObserver?.disconnect();
             echo.leave(channelName);
             scene.destroy();
