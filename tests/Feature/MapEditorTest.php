@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\DoorState;
+use App\Models\PropState;
 use App\Models\Room;
 use App\Models\User;
 use Database\Seeders\PropTypeSeeder;
@@ -161,6 +163,47 @@ class MapEditorTest extends TestCase
         $noName = $this->validMap();
         $noName['zones'] = [['x1' => 1, 'y1' => 1, 'x2' => 2, 'y2' => 2]];
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $noName])->assertSessionHasErrors('map.zones.0.name');
+    }
+
+    public function test_doors_must_have_unique_ids(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $map = $this->validMap();
+        $map['doors'] = [
+            ['id' => 'd1', 'x' => 1, 'y' => 1, 'lock' => null],
+            ['id' => 'd1', 'x' => 3, 'y' => 3, 'lock' => null],
+        ];
+
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertSessionHasErrors('map.doors.1.id');
+
+        $map['doors'][1]['id'] = 'd2';
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertRedirect('/rooms/office');
+    }
+
+    public function test_saving_a_map_forgets_states_of_removed_doors_and_props(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $map = $this->validMap();
+        $map['rows'] = ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'];
+        $map['spawn'] = ['x' => 3, 'y' => 4];
+        $map['doors'] = [['id' => 'd1', 'x' => 1, 'y' => 1, 'lock' => null]];
+        $map['props'] = [['id' => 'tv1', 'type' => 'tv', 'x' => 2, 'y' => 5]];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertRedirect();
+
+        // дверь заперли, телевизор включили
+        DoorState::create(['room_id' => $this->office->id, 'door_key' => 'd1', 'closed' => true, 'locked' => true]);
+        PropState::create(['room_id' => $this->office->id, 'prop_key' => 'tv1', 'state' => 'on']);
+
+        // а теперь их убрали из карты — состояния не должны пережить сохранение
+        $without = $map;
+        $without['doors'] = [];
+        $without['props'] = [];
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $without])->assertRedirect();
+
+        $this->assertDatabaseMissing('door_states', ['room_id' => $this->office->id, 'door_key' => 'd1']);
+        $this->assertDatabaseMissing('prop_states', ['room_id' => $this->office->id, 'prop_key' => 'tv1']);
     }
 
     public function test_props_are_saved_and_validated(): void

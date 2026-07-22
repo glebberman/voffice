@@ -209,7 +209,18 @@ class MapUpdateRequest extends FormRequest
                 // дверь должна стоять на проходимой клетке — иначе через неё
                 // никогда не пройти, и она просто ломает связность карты
                 $seenDoors = [];
+                $doorIds = [];
                 foreach ($this->mapList('doors') as $i => $doorItem) {
+                    // id адресует состояние двери (door_states) — дубль означал бы
+                    // одну запись на две двери: открыл одну, открылась и вторая
+                    $id = is_array($doorItem) ? ($doorItem['id'] ?? null) : null;
+                    if (is_string($id)) {
+                        if (isset($doorIds[$id])) {
+                            $validator->errors()->add("map.doors.{$i}.id", 'Дверь с таким id уже есть');
+                        }
+                        $doorIds[$id] = true;
+                    }
+
                     [$x, $y] = self::pointOf($doorItem);
                     if (! $inBounds($x, $y) || ! $walkable($x, $y)) {
                         $validator->errors()->add("map.doors.{$i}", 'Дверь должна стоять на проходимой клетке');

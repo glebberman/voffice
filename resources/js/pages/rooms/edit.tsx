@@ -105,6 +105,7 @@ export default function RoomEdit() {
                         sizeDraft={ed.sizeDraft}
                         onSize={ed.setSizeDraft}
                         onApplyResize={ed.applyResize}
+                        resizeLoss={ed.resizeLoss}
                     />
                     <ZonesPanel
                         zones={ed.zones}

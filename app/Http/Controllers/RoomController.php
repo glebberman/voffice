@@ -88,6 +88,28 @@ class RoomController extends Controller
             'map' => $request->input('map'),
         ]);
 
+        $this->forgetOrphanStates($room);
+
         return redirect()->route('rooms.show', $room);
+    }
+
+    /**
+     * Убирает состояния дверей и предметов, которых в карте больше нет.
+     * Иначе состояние живёт вечно: дверь удалили, поставили новую — и та
+     * рождалась бы запертой, унаследовав чужую строку.
+     */
+    private function forgetOrphanStates(Room $room): void
+    {
+        $doorKeys = [];
+        foreach ($room->map['doors'] ?? [] as $door) {
+            $doorKeys[] = $door['id'];
+        }
+        DoorState::query()->where('room_id', $room->id)->whereNotIn('door_key', $doorKeys)->delete();
+
+        $propKeys = [];
+        foreach ($room->map['props'] ?? [] as $prop) {
+            $propKeys[] = $prop['id'];
+        }
+        PropState::query()->where('room_id', $room->id)->whereNotIn('prop_key', $propKeys)->delete();
     }
 }

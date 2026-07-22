@@ -35,6 +35,31 @@ interface RoomInfo {
 /** Пустой результат обхода — когда подсвечивать нечего, BFS не запускаем вовсе. */
 const NOTHING_REACHABLE: ReadonlySet<number> = new Set<number>();
 
+/**
+ * Ближайшая проходимая клетка к (x, y) — обходом по расширяющимся кольцам.
+ * Нужна спавну после ужатия карты: клетка в новых границах может оказаться
+ * стеной или столом, а спавн на непроходимой сервер не примет.
+ */
+function nearestWalkable(rows: string[], x: number, y: number): { x: number; y: number } {
+    const w = rows[0]?.length ?? 0;
+    const h = rows.length;
+    const ok = (cx: number, cy: number) => cx >= 0 && cy >= 0 && cx < w && cy < h && isWalkableChar(rows[cy][cx]);
+    if (ok(x, y)) {
+        return { x, y };
+    }
+    for (let r = 1; r < Math.max(w, h); r++) {
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                if (Math.max(Math.abs(dx), Math.abs(dy)) === r && ok(x + dx, y + dy)) {
+                    return { x: x + dx, y: y + dy };
+                }
+            }
+        }
+    }
+
+    return { x, y }; // проходимых клеток нет вовсе — пусть решает валидация
+}
+
 function isTyping(target: EventTarget | null): boolean {
     return target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 }
@@ -70,6 +95,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     // счётчик для уникального id предмета: Date.now() может совпасть при быстрой
     // постановке подряд, а дублирующийся id ломает выделение и ключи React
     const propSeq = useRef(0);
+    const doorSeq = useRef(0);
     // якорь прямоугольника и флаг «сейчас рисуем кистью» — между down и up
     const rectStart = useRef<Tile | null>(null);
     const painting = useRef(false);
@@ -110,7 +136,9 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
             if (!isWalkableChar(rows[y][x]) || doors.some((d) => d.x === x && d.y === y)) {
                 return;
             }
-            setDoors((prev) => [...prev, { id: `door-${x}-${y}`, x, y, lock: null }]);
+            // id не завязан на координаты: перенос двери его не меняет, а вторая
+            // дверь на освободившейся клетке не унаследует чужое состояние
+            setDoors((prev) => [...prev, { id: `door-${Date.now()}-${doorSeq.current++}`, x, y, lock: null }]);
             return;
         }
         setRows((prev) => setTile(prev, x, y, brush));
@@ -341,11 +369,36 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [catalogue, width, height]);
 
+    /** Размер из полей, зажатый в допустимые пределы — им же меряем потери. */
+    const resizeTo = { w: Math.max(3, Math.min(MAX_MAP_SIZE, sizeDraft.w)), h: Math.max(3, Math.min(MAX_MAP_SIZE, sizeDraft.h)) };
+
+    // Что не переживёт применение размера. Считаем заранее и показываем в
+    // панели: возврат прежнего размера удалённое не воскрешает, а «ужал —
+    // посмотрел — вернул» стирал мебель по краям молча.
+    const resizeLoss = useMemo(() => {
+        const { w, h } = resizeTo;
+        const lostProps = props.filter((p) => {
+            const spec = propSpec(catalogue, p.type);
+            const orientation = spec ? propOrientation(spec, p.dir) : null;
+            return !orientation || !propFits(orientation, p.x, p.y, w, h);
+        }).length;
+
+        return {
+            props: lostProps,
+            doors: doors.filter((d) => d.x >= w || d.y >= h).length,
+            portals: portals.filter((p) => p.x >= w || p.y >= h).length,
+            zones: zones.filter((z) => z.x1 >= w || z.y1 >= h).length,
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [catalogue, props, doors, portals, zones, resizeTo.w, resizeTo.h]);
+
     const applyResize = () => {
-        const w = Math.max(3, Math.min(MAX_MAP_SIZE, sizeDraft.w));
-        const h = Math.max(3, Math.min(MAX_MAP_SIZE, sizeDraft.h));
-        setRows((prev) => resizeRows(prev, w, h));
-        setSpawn((prev) => ({ x: Math.min(prev.x, w - 2), y: Math.min(prev.y, h - 2) }));
+        const { w, h } = resizeTo;
+        const resized = resizeRows(rows, w, h);
+        setRows(resized);
+        // Клампим спавн в новые границы, но не на стену и не в мебель: после
+        // ужатия угол (w-2, h-2) вполне может оказаться столом.
+        setSpawn((prev) => nearestWalkable(resized, Math.min(prev.x, w - 2), Math.min(prev.y, h - 2)));
         setPortals((prev) => prev.filter((p) => p.x < w && p.y < h));
         setDoors((prev) => prev.filter((d) => d.x < w && d.y < h));
         setProps((prev) =>
@@ -520,6 +573,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         sizeDraft,
         setSizeDraft,
         applyResize,
+        resizeLoss,
         save,
         saving,
         errors,
