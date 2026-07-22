@@ -259,6 +259,14 @@ class MapUpdateRequest extends FormRequest
                 if (is_array($spawn) && is_int($spawn['x'] ?? null) && is_int($spawn['y'] ?? null)) {
                     $spawnKey = $spawn['x'].':'.$spawn['y'];
                 }
+                // клетки порталов: предмет поверх портала делает его недостижимым,
+                // как и дверь под предметом (портал срабатывает по входу на клетку)
+                $portalCells = [];
+                foreach ($this->mapList('portals') as $portal) {
+                    [$px, $py] = self::pointOf($portal);
+                    $portalCells[$px.':'.$py] = true;
+                }
+
                 $takenByProps = [];
                 foreach ($this->mapList('props') as $i => $prop) {
                     $type = is_array($prop) ? ($prop['type'] ?? null) : null;
@@ -311,6 +319,9 @@ class MapUpdateRequest extends FormRequest
                             }
                             if (isset($seenDoors[$cell])) {
                                 $validator->errors()->add("map.props.{$i}", 'Предмет стоит на двери');
+                            }
+                            if (isset($portalCells[$cell])) {
+                                $validator->errors()->add("map.props.{$i}", 'Предмет стоит на портале');
                             }
                             if (isset($takenByProps[$cell])) {
                                 $validator->errors()->add("map.props.{$i}", 'Предметы накладываются друг на друга');

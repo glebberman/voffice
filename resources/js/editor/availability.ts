@@ -11,6 +11,8 @@ export interface PlacementContext {
     height: number;
     spawn: { x: number; y: number };
     doors: readonly { x: number; y: number }[];
+    /** Порталы: предмет поверх портала сделал бы его недостижимым. */
+    portals: readonly { x: number; y: number }[];
     /** Клетки чужих оснований (blockedByProps с exceptId переносимого). */
     occupied: ReadonlySet<number>;
 }
@@ -19,7 +21,8 @@ export interface PlacementContext {
  * Можно ли поставить предмет сюда — те же правила, что проверяет сервер
  * (`MapUpdateRequest`): основание целиком в границах, высокой части хватает
  * места сверху, и основание не накрывает ни точку спавна (игрок появился бы
- * внутри мебели), ни дверь (её было бы не открыть), ни чужой предмет.
+ * внутри мебели), ни дверь (её было бы не открыть), ни портал (стал бы
+ * недостижим), ни чужой предмет.
  *
  * Клиенту это нужно, чтобы призрак краснел сразу: без проверки предмет молча
  * вставал, а карта переставала сохраняться — и узнавали об этом через десять
@@ -41,6 +44,9 @@ export function canPlace(orientation: PropOrientation, x: number, y: number, ctx
                 return false;
             }
             if (ctx.doors.some((d) => d.x === cx && d.y === cy)) {
+                return false;
+            }
+            if (ctx.portals.some((p) => p.x === cx && p.y === cy)) {
                 return false;
             }
         }

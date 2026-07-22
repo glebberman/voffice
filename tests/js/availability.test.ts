@@ -88,6 +88,7 @@ describe('можно ли поставить предмет', () => {
         height: 10,
         spawn: { x: 9, y: 9 },
         doors: [],
+        portals: [],
         occupied: new Set<number>(),
         ...over,
     });
@@ -108,6 +109,11 @@ describe('можно ли поставить предмет', () => {
     it('поверх двери — нельзя (её было бы не открыть)', () => {
         expect(canPlace(bench, 2, 2, ctx({ doors: [{ x: 3, y: 2 }] }))).toBe(false);
         expect(canPlace(bench, 2, 2, ctx({ doors: [{ x: 4, y: 2 }] }))).toBe(true);
+    });
+
+    it('поверх портала — нельзя (портал стал бы недостижим)', () => {
+        expect(canPlace(bench, 2, 2, ctx({ portals: [{ x: 3, y: 2 }] }))).toBe(false);
+        expect(canPlace(bench, 2, 2, ctx({ portals: [{ x: 4, y: 2 }] }))).toBe(true);
     });
 
     it('поверх чужого основания — нельзя', () => {

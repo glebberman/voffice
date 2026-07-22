@@ -154,7 +154,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
 
     /** Встанет ли предмет — по тем же правилам, что и на сервере. */
     const fits = (o: PropOrientation, x: number, y: number, exceptId?: string): boolean =>
-        canPlace(o, x, y, { width, height, spawn, doors, occupied: occupiedWithout(exceptId) });
+        canPlace(o, x, y, { width, height, spawn, doors, portals, occupied: occupiedWithout(exceptId) });
 
     // сторона, ориентация и «влезает ли» — для призрака и постановки
     const ghostFor = (type: string, dir: PropDir | undefined, x: number, y: number, exceptId?: string): PropGhostView | null => {

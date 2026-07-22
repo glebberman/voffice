@@ -201,6 +201,23 @@ class MapEditorTest extends TestCase
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $ok])->assertRedirect('/rooms/office');
     }
 
+    public function test_prop_cannot_stand_on_a_portal(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $map = $this->validMap();
+        $map['rows'] = ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'];
+        $map['spawn'] = ['x' => 3, 'y' => 4];
+        $map['portals'] = [['x' => 2, 'y' => 2, 'to' => 'coworking', 'label' => 'В коворкинг', 'tx' => 7, 'ty' => 7]];
+        $map['props'] = [['id' => 'c1', 'type' => 'cabinet', 'x' => 2, 'y' => 2]];
+
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertSessionHasErrors('map.props.0');
+
+        // рядом с порталом, не на нём — можно
+        $map['props'][0]['x'] = 4;
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertRedirect('/rooms/office');
+    }
+
     public function test_portal_arrival_must_be_walkable_in_the_target_room(): void
     {
         $admin = User::factory()->admin()->create();
