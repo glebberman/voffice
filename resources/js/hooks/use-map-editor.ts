@@ -244,14 +244,20 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     };
 
     // Панель правит координаты числами — те же правила, что и у призрака:
-    // молча принятая правка позже завалила бы сохранение всей карты.
+    // молча принятая правка позже завалила бы сохранение всей карты. Гейт нужен,
+    // только если патч трогает место предмета; правку настроек (settings) он не
+    // касается — её форму сервер проверяет отдельно, от позиции не зависит.
     const patchProp = (i: number, patch: Partial<PropData>) => {
+        const movesProp = patch.x !== undefined || patch.y !== undefined || patch.dir !== undefined;
         setProps((prev) =>
             prev.map((o, j) => {
                 if (j !== i) {
                     return o;
                 }
                 const next = { ...o, ...patch };
+                if (!movesProp) {
+                    return next;
+                }
                 const spec = propSpec(catalogue, next.type);
                 const orientation = spec ? propOrientation(spec, next.dir) : null;
 
