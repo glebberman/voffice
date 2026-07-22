@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\PropTypeRequest;
 use App\Models\PropCategory;
 use App\Models\PropType;
-use App\Models\Room;
 use App\Support\CurrentUser;
 use App\Support\SpriteSheets;
 use Illuminate\Http\RedirectResponse;
@@ -63,7 +62,7 @@ class PropTypeController extends Controller
             'categories' => $categories,
             'sheets' => SpriteSheets::all(),
             // сколько раз каждый тип уже стоит на картах: удалять использованные нельзя
-            'usage' => $this->usage(),
+            'usage' => PropType::usage(),
         ]);
     }
 
@@ -107,7 +106,7 @@ class PropTypeController extends Controller
     {
         abort_unless((bool) CurrentUser::of($request)->is_admin, 403);
 
-        $used = $this->usage()[$propType->slug] ?? 0;
+        $used = PropType::usage()[$propType->slug] ?? 0;
         if ($used > 0) {
             return back()->withErrors(['slug' => "Предмет стоит на картах ({$used} шт.) — сначала уберите его из редактора карты"]);
         }
@@ -115,24 +114,5 @@ class PropTypeController extends Controller
         $propType->delete();
 
         return redirect()->route('props.index');
-    }
-
-    /**
-     * Сколько предметов каждого типа расставлено по всем картам.
-     *
-     * @return array<string, int>
-     */
-    private function usage(): array
-    {
-        $counts = [];
-
-        foreach (Room::query()->get(['map']) as $room) {
-            // форму props гарантирует валидация карты (MapUpdateRequest)
-            foreach ($room->map['props'] ?? [] as $prop) {
-                $counts[$prop['type']] = ($counts[$prop['type']] ?? 0) + 1;
-            }
-        }
-
-        return $counts;
     }
 }

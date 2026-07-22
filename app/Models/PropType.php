@@ -58,6 +58,27 @@ class PropType extends Model
     }
 
     /**
+     * Сколько предметов каждого типа расставлено по всем картам. Считают и
+     * каталог (что можно удалить), и валидация типа (что можно переименовать):
+     * карты ссылаются на тип строкой, внешнего ключа тут нет.
+     *
+     * @return array<string, int>
+     */
+    public static function usage(): array
+    {
+        $counts = [];
+
+        foreach (Room::query()->get(['map']) as $room) {
+            // форму props гарантирует валидация карты (MapUpdateRequest)
+            foreach ($room->map['props'] ?? [] as $prop) {
+                $counts[$prop['type']] = ($counts[$prop['type']] ?? 0) + 1;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
      * Каталог в том же виде, в каком его ждут клиент (game/props.ts) и
      * валидация карты: словарь slug → спека с ориентациями.
      *

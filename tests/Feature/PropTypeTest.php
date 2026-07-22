@@ -159,6 +159,26 @@ class PropTypeTest extends TestCase
         $this->actingAs($admin)->post('/props', $this->validType(['slug' => 'Шкаф Большой']))->assertSessionHasErrors('slug');
     }
 
+    public function test_used_type_cannot_be_renamed_but_unused_can(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // шкаф стоит в демо-офисе: смена ключа осиротила бы предметы на картах
+        $used = PropType::where('slug', 'cabinet')->firstOrFail();
+        $this->actingAs($admin)
+            ->put("/props/{$used->id}", $this->validType(['slug' => 'wardrobe', 'label' => 'Шкаф']))
+            ->assertSessionHasErrors('slug');
+        $this->assertDatabaseHas('prop_types', ['id' => $used->id, 'slug' => 'cabinet']);
+
+        // а ни на одной карте не стоящий тип переименовывается свободно
+        $this->actingAs($admin)->post('/props', $this->validType());
+        $unused = PropType::where('slug', 'bookshelf')->firstOrFail();
+        $this->actingAs($admin)
+            ->put("/props/{$unused->id}", $this->validType(['slug' => 'shelf']))
+            ->assertRedirect('/props');
+        $this->assertDatabaseHas('prop_types', ['id' => $unused->id, 'slug' => 'shelf']);
+    }
+
     public function test_region_must_be_aligned_to_the_tile_grid(): void
     {
         $this->actingAs(User::factory()->admin()->create())

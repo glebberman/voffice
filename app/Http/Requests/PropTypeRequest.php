@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\PropOrientation;
+use App\Models\PropType;
 use App\Support\PropBehaviors;
 use App\Support\SpriteSheets;
 use Illuminate\Foundation\Http\FormRequest;
@@ -28,8 +29,8 @@ class PropTypeRequest extends FormRequest
         $type = $this->route('prop_type');
 
         return [
-            // slug — ключ, которым предмет назван в картах; менять его у
-            // существующего типа нельзя, иначе карты потеряют свои предметы
+            // slug — ключ, которым предмет назван в картах; у типа, который
+            // уже стоит на картах, менять его нельзя (проверка в after())
             'slug' => [
                 'required', 'string', 'max:64', 'regex:'.self::NAME_REGEX,
                 Rule::unique('prop_types', 'slug')->ignore($type),
@@ -87,6 +88,8 @@ class PropTypeRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
+                $this->assertSlugStaysWhileUsed($validator);
+
                 $names = null;
                 $behavior = $this->validatedBehavior();
 
@@ -165,6 +168,31 @@ class PropTypeRequest extends FormRequest
             if ($dx >= 0 && $dx < $w && $dy >= 0 && $dy < $h) {
                 $validator->errors()->add("orientations.{$i}.interaction.{$j}", 'Клетка зоны не может стоять на основании предмета');
             }
+        }
+    }
+
+    /**
+     * Тип, который уже стоит на картах, переименовать нельзя: карты ссылаются
+     * на него строкой, внешнего ключа нет — предметы осиротели бы (перестали
+     * рисоваться и блокировать проход), а сохранение таких комнат падало бы на
+     * `Rule::in(каталог)`. UI дизейблит поле по снапшоту usage, но устаревшая
+     * вкладка и прямой PUT его обходят, поэтому решает сервер.
+     */
+    private function assertSlugStaysWhileUsed(Validator $validator): void
+    {
+        $type = $this->route('prop_type');
+        if (! $type instanceof PropType) {
+            return; // создание: ключ ещё ничей
+        }
+
+        $slug = $this->string('slug')->toString();
+        if ($slug === $type->slug) {
+            return;
+        }
+
+        $used = PropType::usage()[$type->slug] ?? 0;
+        if ($used > 0) {
+            $validator->errors()->add('slug', "Предмет стоит на картах ({$used} шт.) — ключ менять нельзя");
         }
     }
 
