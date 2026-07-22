@@ -233,6 +233,25 @@ class MapEditorTest extends TestCase
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertRedirect('/rooms/office');
     }
 
+    public function test_self_portal_is_checked_against_the_submitted_map(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // прибытие на (5,1) — сейчас в validMap это стена периметра
+        $map = $this->validMap();
+        $map['rows'] = ['#######', '#.....#', '#.....#', '#######'];
+        $map['spawn'] = ['x' => 1, 'y' => 1];
+        $map['portals'] = [['x' => 1, 'y' => 1, 'to' => 'office', 'label' => 'В себя', 'tx' => 5, 'ty' => 3]];
+
+        // (5,3) — стена в этой же карте: портал ведёт в никуда
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertSessionHasErrors('map.portals.0.tx');
+
+        // а в том же сохранении прорубаем там пол — проверка должна смотреть на
+        // ОТПРАВЛЯЕМУЮ карту, а не на ту, что ещё лежит в БД
+        $map['rows'][3] = '#####.#';
+        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $map])->assertRedirect('/rooms/office');
+    }
+
     public function test_doors_must_have_unique_ids(): void
     {
         $admin = User::factory()->admin()->create();

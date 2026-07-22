@@ -32,6 +32,13 @@ class MapUpdateRequest extends FormRequest
     private ?array $catalogue = null;
 
     /**
+     * Кеш строк карты по slug целевой комнаты — иначе один SELECT на портал.
+     *
+     * @var array<string, list<string>|null>
+     */
+    private array $targetRowsCache = [];
+
+    /**
      * Каталог предметов — тот же, что уезжает клиенту (game/props.ts).
      *
      * @return array<string, PropSpec>
@@ -39,6 +46,22 @@ class MapUpdateRequest extends FormRequest
     private function propCatalogue(): array
     {
         return $this->catalogue ??= PropType::catalogue();
+    }
+
+    /**
+     * Строки карты чужой комнаты из БД (для проверки клетки прибытия портала).
+     * Кешируется: порталов в комнату может быть несколько.
+     *
+     * @return list<string>|null
+     */
+    private function targetRows(string $slug): ?array
+    {
+        if (! array_key_exists($slug, $this->targetRowsCache)) {
+            $room = Room::query()->where('slug', $slug)->first();
+            $this->targetRowsCache[$slug] = $room?->map['rows'] ?? null;
+        }
+
+        return $this->targetRowsCache[$slug];
     }
 
     /**
@@ -144,7 +167,7 @@ class MapUpdateRequest extends FormRequest
             'map.doors.*.x' => ['required', 'integer', 'min:0'],
             'map.doors.*.y' => ['required', 'integer', 'min:0'],
             'map.doors.*.lock' => ['present', 'nullable', 'string', 'in:north,south,west,east'],
-            'map.portals' => ['present', 'array'],
+            'map.portals' => ['present', 'array', 'max:500'],
             'map.portals.*.x' => ['required', 'integer', 'min:0'],
             'map.portals.*.y' => ['required', 'integer', 'min:0'],
             'map.portals.*.to' => ['required', 'string', 'exists:rooms,slug'],
@@ -211,13 +234,22 @@ class MapUpdateRequest extends FormRequest
                         continue;
                     }
                     $to = $portal['to'] ?? null;
-                    $target = is_string($to) ? Room::query()->where('slug', $to)->first() : null;
-                    if ($target === null) {
+                    if (! is_string($to)) {
+                        continue;
+                    }
+                    // Портал в свою же комнату проверяем по строкам ИЗ этого
+                    // запроса, а не из БД: их же сейчас и сохраняют, а старая
+                    // версия карты дала бы и ложный отказ (пробили стену под
+                    // прибытие), и ложный пропуск (сделали клетку стеной).
+                    $editedSlug = $this->route('room');
+                    $editedSlug = $editedSlug instanceof Room ? $editedSlug->slug : (is_string($editedSlug) ? $editedSlug : null);
+                    $targetRows = $to === $editedSlug ? $rows : $this->targetRows($to);
+                    if ($targetRows === null) {
                         continue; // несуществующую комнату ловит правило exists
                     }
                     $tx = is_int($portal['tx'] ?? null) ? $portal['tx'] : -1;
                     $ty = is_int($portal['ty'] ?? null) ? $portal['ty'] : -1;
-                    $row = $target->map['rows'][$ty] ?? null;
+                    $row = $targetRows[$ty] ?? null;
                     $char = is_string($row) && $tx >= 0 && $tx < strlen($row) ? $row[$tx] : '#';
                     if (! in_array($char, self::WALKABLE, true)) {
                         $validator->errors()->add("map.portals.{$i}.tx", 'Клетка прибытия в целевой комнате непроходима');
