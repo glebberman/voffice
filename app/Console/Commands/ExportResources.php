@@ -112,6 +112,11 @@ class ExportResources extends Command
                 if ($states !== []) {
                     $entry['states'] = $states;
                 }
+                // так же и с зоной взаимодействия: пустую не пишем
+                $interaction = $orientation->interactionCells();
+                if ($interaction !== []) {
+                    $entry['interaction'] = $interaction;
+                }
                 $orientations[$orientation->dir] = $entry;
             }
             $item = ['label' => $type->label];

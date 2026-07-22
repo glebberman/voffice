@@ -57,6 +57,11 @@ class PropTypeRequest extends FormRequest
             'orientations.*.states.*.sheet' => ['required', 'string', Rule::in(SpriteSheets::all())],
             'orientations.*.states.*.sx' => ['required', 'integer', 'min:0', 'multiple_of:'.self::TILE],
             'orientations.*.states.*.sy' => ['required', 'integer', 'min:0', 'multiple_of:'.self::TILE],
+            // зона взаимодействия: смещения клеток от origin, отрицательные
+            // допустимы; дубли и наложение на основание ловит after()
+            'orientations.*.interaction' => ['sometimes', 'array', 'max:32'],
+            'orientations.*.interaction.*.dx' => ['required', 'integer', 'between:-8,8'],
+            'orientations.*.interaction.*.dy' => ['required', 'integer', 'between:-8,8'],
         ];
     }
 
@@ -102,6 +107,9 @@ class PropTypeRequest extends FormRequest
                     } elseif ($names !== $ownNames) {
                         $validator->errors()->add("orientations.{$i}.states", 'У всех сторон должен быть один и тот же набор состояний');
                     }
+
+                    // клетки зоны — без дублей и не поверх основания (на нём не стоят)
+                    $this->assertInteraction($validator, $i, $orientation['w'], $orientation['h']);
                 }
 
                 $default = $this->validatedDefaultState();
@@ -113,6 +121,39 @@ class PropTypeRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    /**
+     * Клетки зоны взаимодействия ориентации $i: без дублей и не поверх
+     * основания. dx/dy читаем из сырого запроса, чтобы указать номер клетки.
+     */
+    private function assertInteraction(Validator $validator, int $i, int $w, int $h): void
+    {
+        $raw = $this->input("orientations.{$i}.interaction");
+        if (! is_array($raw)) {
+            return;
+        }
+        $seen = [];
+        foreach (array_values($raw) as $j => $cell) {
+            if (! is_array($cell)) {
+                continue;
+            }
+            $dx = $cell['dx'] ?? null;
+            $dy = $cell['dy'] ?? null;
+            if (! is_int($dx) || ! is_int($dy)) {
+                continue; // о неверном типе уже сообщили правила
+            }
+            $key = "{$dx},{$dy}";
+            if (isset($seen[$key])) {
+                $validator->errors()->add("orientations.{$i}.interaction.{$j}", 'Клетка зоны повторяется');
+
+                continue;
+            }
+            $seen[$key] = true;
+            if ($dx >= 0 && $dx < $w && $dy >= 0 && $dy < $h) {
+                $validator->errors()->add("orientations.{$i}.interaction.{$j}", 'Клетка зоны не может стоять на основании предмета');
+            }
+        }
     }
 
     private function assertRegionFits(Validator $validator, string $key, string $sheet, int $sx, int $sy, int $w, int $rows): void
@@ -132,7 +173,7 @@ class PropTypeRequest extends FormRequest
      * Регионы состояний собираются в словарь по имени и сортируются: в этом
      * виде они уезжают в БД, каталог и экспорт.
      *
-     * @return list<array{dir: string, sheet: string, sx: int, sy: int, w: int, h: int, tall: int, states: array<string, array{sheet: string, sx: int, sy: int}>}>
+     * @return list<array{dir: string, sheet: string, sx: int, sy: int, w: int, h: int, tall: int, states: array<string, array{sheet: string, sx: int, sy: int}>, interaction: list<array{dx: int, dy: int}>}>
      */
     public function orientationFields(): array
     {
@@ -162,10 +203,48 @@ class PropTypeRequest extends FormRequest
             $out[] = [
                 'dir' => $dir, 'sheet' => $sheet, 'sx' => $sx, 'sy' => $sy, 'w' => $w, 'h' => $h, 'tall' => $tall,
                 'states' => self::stateFields($item['states'] ?? []),
+                'interaction' => self::interactionFields($item['interaction'] ?? [], $w, $h),
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * Клетки зоны в известной форме: {dx,dy} целые, без дублей, не на основании
+     * (0<=dx<w, 0<=dy<h), по (dy,dx). В этом виде уезжают в БД, каталог и
+     * экспорт. Отсев на основании дублирует проверку assertInteraction: тот
+     * даёт пользователю ошибку, а этот страхует запись на случай, если сверка
+     * по индексу разъедется (число пришло строкой — ориентация выпала).
+     *
+     * @return list<array{dx: int, dy: int}>
+     */
+    private static function interactionFields(mixed $raw, int $w, int $h): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $seen = [];
+        $cells = [];
+        foreach ($raw as $cell) {
+            if (! is_array($cell)) {
+                continue;
+            }
+            $dx = $cell['dx'] ?? null;
+            $dy = $cell['dy'] ?? null;
+            if (! is_int($dx) || ! is_int($dy) || isset($seen["{$dx},{$dy}"])) {
+                continue;
+            }
+            if ($dx >= 0 && $dx < $w && $dy >= 0 && $dy < $h) {
+                continue; // клетка на основании — на ней не стоят
+            }
+            $seen["{$dx},{$dy}"] = true;
+            $cells[] = ['dx' => $dx, 'dy' => $dy];
+        }
+        usort($cells, fn (array $a, array $b): int => [$a['dy'], $a['dx']] <=> [$b['dy'], $b['dx']]);
+
+        return $cells;
     }
 
     /**

@@ -43,6 +43,7 @@ class PropTypeController extends Controller
                     'h' => $orientation->h,
                     'tall' => $orientation->tall,
                     'states' => $orientation->stateRegions(),
+                    'interaction' => $orientation->interactionCells(),
                 ];
             }
             $types[] = [

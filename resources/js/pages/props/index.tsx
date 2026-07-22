@@ -1,4 +1,5 @@
 import { AXES, CategoryManager, type CategoryRow } from '@/components/props-editor/CategoryManager';
+import { InteractionZoneGrid } from '@/components/props-editor/InteractionZoneGrid';
 import { OrientationTabs } from '@/components/props-editor/OrientationTabs';
 import { SheetCropper } from '@/components/props-editor/SheetCropper';
 import { StateTabs } from '@/components/props-editor/StateTabs';
@@ -6,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PROP_DIRS, propSheetUrl, withState, type PropDir, type PropOrientation, type PropStateRegion } from '@/game/props';
+import { PROP_DIRS, propSheetUrl, withState, type PropCell, type PropDir, type PropOrientation, type PropStateRegion } from '@/game/props';
 import AppLayout from '@/layouts/app-layout';
 import { type SharedData } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
@@ -18,6 +19,7 @@ const TILE = 32;
 interface OrientationRow extends PropOrientation {
     dir: PropDir;
     states: Partial<Record<string, PropStateRegion>>; // в черновике всегда есть, хотя бы пустые
+    interaction: PropCell[]; // в черновике всегда есть, хотя бы пустой
 }
 
 interface PropTypeRow {
@@ -56,7 +58,7 @@ const emptyDraft = (sheet: string): Draft => ({
     description: '',
     defaultState: null,
     categoryIds: [],
-    orientations: [{ dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0, states: {} }],
+    orientations: [{ dir: 'south', sheet, sx: 0, sy: 0, w: 1, h: 1, tall: 0, states: {}, interaction: [] }],
 });
 
 const draftOf = (type: PropTypeRow): Draft => ({
@@ -65,7 +67,7 @@ const draftOf = (type: PropTypeRow): Draft => ({
     description: type.description,
     defaultState: type.defaultState,
     categoryIds: [...type.categoryIds],
-    orientations: type.orientations.map((o) => ({ ...o, states: { ...o.states } })),
+    orientations: type.orientations.map((o) => ({ ...o, states: { ...o.states }, interaction: [...o.interaction] })),
 });
 
 /** Превью предмета прямо из листа спрайтов — без канваса, одним div-ом. */
@@ -179,8 +181,8 @@ export default function PropsCatalogue() {
         setDraft((d) => {
             const base = d.orientations.find((o) => o.dir === activeDir) ?? d.orientations.at(0);
             const clone: OrientationRow = base
-                ? { ...base, dir, states: { ...base.states } }
-                : { dir, sheet: sheets[0] ?? '', sx: 0, sy: 0, w: 1, h: 1, tall: 0, states: {} };
+                ? { ...base, dir, states: { ...base.states }, interaction: [...base.interaction] }
+                : { dir, sheet: sheets[0] ?? '', sx: 0, sy: 0, w: 1, h: 1, tall: 0, states: {}, interaction: [] };
             return { ...d, orientations: [...d.orientations, clone].sort(byDir) };
         });
         setActiveDir(dir);
@@ -217,6 +219,7 @@ export default function PropsCatalogue() {
                 states: Object.entries(o.states).flatMap(([name, region]) =>
                     region ? [{ name, sheet: region.sheet, sx: region.sx, sy: region.sy }] : [],
                 ),
+                interaction: o.interaction,
             })),
         };
         if (selectedId === null) {
@@ -301,6 +304,15 @@ export default function PropsCatalogue() {
                                     patchOrientation(active.dir, region);
                                 }
                             }}
+                        />
+                    )}
+
+                    {/* зона взаимодействия активной стороны — своя на каждую ориентацию */}
+                    {active && (
+                        <InteractionZoneGrid
+                            orientation={active}
+                            cells={active.interaction}
+                            onChange={(interaction) => patchOrientation(active.dir, { interaction })}
                         />
                     )}
                 </div>

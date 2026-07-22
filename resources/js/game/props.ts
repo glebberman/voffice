@@ -24,6 +24,11 @@ export interface PropStateRegion {
     sy: number;
 }
 
+// Клетка зоны взаимодействия: смещение от origin (левого верхнего тайла
+// основания). Тип-алиас, а не interface: так объект проходит как
+// FormDataConvertible в payload Inertia (у interface нет индекс-сигнатуры).
+export type PropCell = { dx: number; dy: number };
+
 /**
  * Одна сторона предмета: свой регион на листе и своя геометрия — у повёрнутого
  * предмета меняется не только картинка, но и footprint (стол 4×1 → 1×2).
@@ -38,6 +43,9 @@ export interface PropOrientation {
     // имена общие для всех сторон типа; отсутствие поля = состояний нет
     // (props.json пустые состояния не пишет, сервер присылает всегда)
     states?: Partial<Record<string, PropStateRegion>>;
+    // клетки, стоя на которых с предметом взаимодействуют; своя на ориентацию
+    // (поворот разворачивает зону). Отсутствие/пустой список = не интерактивен
+    interaction?: PropCell[];
 }
 
 export interface PropSpec {
@@ -180,4 +188,13 @@ export function propFootprint(orientation: PropOrientation, prop: { x: number; y
  */
 export function propFits(orientation: PropOrientation, x: number, y: number, width: number, height: number): boolean {
     return x >= 0 && y - orientation.tall >= 0 && x + orientation.w <= width && y + orientation.h <= height;
+}
+
+/**
+ * Абсолютные клетки зоны взаимодействия предмета на карте: смещения ориентации
+ * прибавляются к origin предмета. Стоя на одной из них, персонаж сможет
+ * пользоваться предметом (само взаимодействие приедет с поведениями).
+ */
+export function propInteractionCells(orientation: PropOrientation, prop: { x: number; y: number }): { x: number; y: number }[] {
+    return (orientation.interaction ?? []).map((c) => ({ x: prop.x + c.dx, y: prop.y + c.dy }));
 }

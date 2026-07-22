@@ -309,6 +309,55 @@ class PropTypeTest extends TestCase
         $this->assertSame(['south'], $dirs());
     }
 
+    public function test_interaction_zone_persists_per_orientation(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // у каждой стороны своя зона — поворот телевизора разворачивает и её
+        $payload = $this->validType(['orientations' => [
+            [
+                'dir' => 'south', 'sheet' => 'office/Desk, Ornate.png', 'sx' => 96, 'sy' => 0, 'w' => 2, 'h' => 1, 'tall' => 2,
+                // намеренно вперемешку — на записи нормализуется в порядок (dy, dx)
+                'interaction' => [['dx' => 1, 'dy' => 1], ['dx' => 0, 'dy' => 1], ['dx' => -1, 'dy' => 0]],
+            ],
+            [
+                'dir' => 'east', 'sheet' => 'office/Card Table.png', 'sx' => 96, 'sy' => 0, 'w' => 1, 'h' => 2, 'tall' => 0,
+                'interaction' => [['dx' => 1, 'dy' => 0], ['dx' => 1, 'dy' => 1]],
+            ],
+        ]]);
+        $this->actingAs($admin)->post('/props', $payload)->assertRedirect('/props');
+
+        $type = PropType::where('slug', 'bookshelf')->firstOrFail();
+        $this->assertSame(
+            [['dx' => -1, 'dy' => 0], ['dx' => 0, 'dy' => 1], ['dx' => 1, 'dy' => 1]],
+            $type->orientations()->where('dir', 'south')->firstOrFail()->interactionCells(),
+        );
+        $this->assertSame(
+            [['dx' => 1, 'dy' => 0], ['dx' => 1, 'dy' => 1]],
+            $type->orientations()->where('dir', 'east')->firstOrFail()->interactionCells(),
+        );
+    }
+
+    public function test_interaction_zone_rejects_bad_cells(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        // повтор одной и той же клетки
+        $this->actingAs($admin)
+            ->post('/props', $this->validType([], ['interaction' => [['dx' => 0, 'dy' => 1], ['dx' => 0, 'dy' => 1]]]))
+            ->assertSessionHasErrors('orientations.0.interaction.1');
+
+        // клетка на основании (south — 2×1): на нём стоять нельзя
+        $this->actingAs($admin)
+            ->post('/props', $this->validType([], ['interaction' => [['dx' => 0, 'dy' => 0]]]))
+            ->assertSessionHasErrors('orientations.0.interaction.0');
+
+        // за пределами допустимого радиуса
+        $this->actingAs($admin)
+            ->post('/props', $this->validType([], ['interaction' => [['dx' => 9, 'dy' => 0]]]))
+            ->assertSessionHasErrors('orientations.0.interaction.0.dx');
+    }
+
     public function test_map_accepts_existing_direction_and_rejects_missing_one(): void
     {
         $admin = User::factory()->admin()->create();

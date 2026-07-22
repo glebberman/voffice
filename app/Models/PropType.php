@@ -19,7 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * редакторе карт: карточка с картинкой, описанием и группировками.
  *
  * @phpstan-type StateRegion array{sheet: string, sx: int, sy: int}
- * @phpstan-type OrientationSpec array{sheet: string, sx: int, sy: int, w: int, h: int, tall: int, states: array<string, StateRegion>}
+ * @phpstan-type InteractionCell array{dx: int, dy: int}
+ * @phpstan-type OrientationSpec array{sheet: string, sx: int, sy: int, w: int, h: int, tall: int, states: array<string, StateRegion>, interaction: list<InteractionCell>}
  * @phpstan-type PropSpec array{label: string, description: string, defaultState: string|null, purposes: list<string>, roomKinds: list<string>, orientations: array<string, OrientationSpec>}
  */
 class PropType extends Model
@@ -81,6 +82,7 @@ class PropType extends Model
                     'h' => $orientation->h,
                     'tall' => $orientation->tall,
                     'states' => $orientation->stateRegions(),
+                    'interaction' => $orientation->interactionCells(),
                 ];
             }
             $catalogue[$type->slug] = [

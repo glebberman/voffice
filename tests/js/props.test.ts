@@ -6,6 +6,7 @@ import {
     propDirs,
     propFits,
     propFootprint,
+    propInteractionCells,
     propOrientation,
     propSpec,
     propTallRect,
@@ -208,6 +209,62 @@ describe('предмет под клеткой (выделение в редак
             { type: 'table', x: 2, y: 2 },
         ];
         expect(propAt(catalogue, stacked, 3, 2)).toBe(1);
+    });
+});
+
+describe('зона взаимодействия', () => {
+    const withZone: PropOrientation = {
+        sheet: 'office/TV, Widescreen.png',
+        sx: 0,
+        sy: 0,
+        w: 3,
+        h: 1,
+        tall: 1,
+        interaction: [
+            { dx: 0, dy: 1 },
+            { dx: -1, dy: 0 },
+        ],
+    };
+
+    it('смещения зоны прибавляются к origin предмета', () => {
+        expect(propInteractionCells(withZone, { x: 5, y: 5 })).toEqual([
+            { x: 5, y: 6 },
+            { x: 4, y: 5 },
+        ]);
+    });
+
+    it('предмет без зоны не даёт клеток', () => {
+        expect(propInteractionCells(orient('cabinet'), { x: 2, y: 2 })).toEqual([]);
+    });
+
+    it('телевизор из каталога интерактивен, стол разворачивает зону при повороте', () => {
+        expect(propInteractionCells(orient('tv'), { x: 0, y: 0 }).length).toBeGreaterThan(0);
+
+        const table = spec('meeting-table');
+        const south = table.orientations.south?.interaction ?? [];
+        const east = table.orientations.east?.interaction ?? [];
+        // у обеих сторон зона есть, и она разная — поворот её разворачивает
+        expect(south.length).toBeGreaterThan(0);
+        expect(east.length).toBeGreaterThan(0);
+        expect(south).not.toEqual(east);
+    });
+
+    it('клетки зоны в каталоге валидны: в радиусе, без дублей, не на основании', () => {
+        for (const type of PROP_TYPES) {
+            for (const orientation of Object.values(spec(type).orientations)) {
+                const cells = orientation?.interaction ?? [];
+                const seen = new Set<string>();
+                for (const c of cells) {
+                    expect(Math.abs(c.dx), `${type} dx`).toBeLessThanOrEqual(8);
+                    expect(Math.abs(c.dy), `${type} dy`).toBeLessThanOrEqual(8);
+                    const onBase = orientation && c.dx >= 0 && c.dx < orientation.w && c.dy >= 0 && c.dy < orientation.h;
+                    expect(onBase, `${type} клетка на основании`).toBe(false);
+                    const key = `${c.dx},${c.dy}`;
+                    expect(seen.has(key), `${type} дубль клетки`).toBe(false);
+                    seen.add(key);
+                }
+            }
+        }
     });
 });
 
