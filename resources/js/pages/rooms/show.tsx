@@ -11,6 +11,7 @@ import { type PropCatalogue } from '@/game/props';
 import { type PlayerStatus, type RoomMessage } from '@/game/types';
 import { REACTIONS, useOffice, type ManualStatus } from '@/hooks/use-office';
 import AppLayout from '@/layouts/app-layout';
+import { ApiError } from '@/lib/api';
 import { type SharedData, type User } from '@/types';
 import { Head, router, usePage } from '@inertiajs/react';
 import { BellRing, Footprints, MapPin, Pencil, SendHorizontal, Shirt } from 'lucide-react';
@@ -74,6 +75,7 @@ function RoomView({ me }: { me: User }) {
     const canvasHost = useRef<HTMLDivElement | null>(null);
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
+    const [chatError, setChatError] = useState<string | null>(null);
     const [tab, setTab] = useState<'nearby' | 'room'>('nearby');
     const [editorOpen, setEditorOpen] = useState(false);
     // в этом проекте users.avatar — json-конфиг образа, а не URL картинки
@@ -134,13 +136,21 @@ function RoomView({ me }: { me: User }) {
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
+        setChatError(null);
         if (tab === 'nearby') {
+            // proximity-чат идёт по whisper: сервер не участвует, терять нечего
             sendMessage(draft);
-        } else {
-            // сообщение уже в истории на сервере; ошибку сети покажет перезагрузка
-            void sendRoomMessage(draft).catch(() => undefined);
+            setDraft('');
+            return;
         }
-        setDraft('');
+        // сообщение комнаты пишется на сервере — очищаем поле только после
+        // подтверждения, иначе срезанное throttle (429) сообщение пропадёт молча
+        const text = draft;
+        void sendRoomMessage(text)
+            .then(() => setDraft(''))
+            .catch((err: unknown) => {
+                setChatError(err instanceof ApiError && err.status === 429 ? 'Слишком часто — подождите пару секунд' : 'Не удалось отправить');
+            });
     };
 
     const selfStatus = statuses[me.id] ?? 'available';
@@ -350,16 +360,22 @@ function RoomView({ me }: { me: User }) {
                                 ))}
                             <div ref={messagesEnd} />
                         </div>
-                        <form onSubmit={submit} className="border-sidebar-border/70 dark:border-sidebar-border flex gap-2 border-t p-3">
-                            <Input
-                                value={draft}
-                                onChange={(e) => setDraft(e.target.value)}
-                                placeholder={tab === 'nearby' ? 'Сказать вслух…' : 'Написать всей комнате…'}
-                                maxLength={tab === 'nearby' ? 200 : 500}
-                            />
-                            <Button type="submit" size="icon" disabled={!draft.trim()}>
-                                <SendHorizontal className="size-4" />
-                            </Button>
+                        <form onSubmit={submit} className="border-sidebar-border/70 dark:border-sidebar-border flex flex-col gap-1 border-t p-3">
+                            <div className="flex gap-2">
+                                <Input
+                                    value={draft}
+                                    onChange={(e) => {
+                                        setDraft(e.target.value);
+                                        setChatError(null);
+                                    }}
+                                    placeholder={tab === 'nearby' ? 'Сказать вслух…' : 'Написать всей комнате…'}
+                                    maxLength={tab === 'nearby' ? 200 : 500}
+                                />
+                                <Button type="submit" size="icon" disabled={!draft.trim()}>
+                                    <SendHorizontal className="size-4" />
+                                </Button>
+                            </div>
+                            {chatError && <span className="text-destructive text-xs">{chatError}</span>}
                         </form>
                     </div>
                 </div>

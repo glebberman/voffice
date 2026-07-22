@@ -2,6 +2,14 @@ function csrfToken(): string {
     return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 }
 
+/** Ошибка HTTP-ответа: несёт статус, чтобы вызывающий отличил 429 от прочего. */
+export class ApiError extends Error {
+    constructor(public readonly status: number) {
+        super(`HTTP ${status}`);
+        this.name = 'ApiError';
+    }
+}
+
 export async function postJson<T>(url: string, data: Record<string, unknown>, headers: Record<string, string> = {}): Promise<T> {
     const response = await fetch(url, {
         method: 'POST',
@@ -14,7 +22,7 @@ export async function postJson<T>(url: string, data: Record<string, unknown>, he
         body: JSON.stringify(data),
     });
     if (!response.ok) {
-        throw new Error(`POST ${url}: ${response.status}`);
+        throw new ApiError(response.status);
     }
     return response.json() as Promise<T>;
 }
