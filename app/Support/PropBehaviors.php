@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
  */
 class PropBehaviors
 {
-    /** Известные поведения. embed — встраиваемый URL; switchable приедет с VOF-31. */
+    /** Известные поведения: embed — встраиваемый URL, switchable — переключение состояний. */
     public const ALL = ['embed', 'switchable'];
 
     /**

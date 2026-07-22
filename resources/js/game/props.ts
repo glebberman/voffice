@@ -71,7 +71,7 @@ export function propSpec(catalogue: PropCatalogue, type: string): PropSpec | nul
 
 /**
  * Ориентация предмета с фолбэком: запрошенная сторона → south → первая
- * попавшаяся. Ту же логику повторяет сервер (MapUpdateRequest::orientationOf),
+ * попавшаяся. Ту же логику повторяет сервер (PropType::orientationOf),
  * поэтому карта с осиротевшим dir рисуется и валидируется одинаково.
  */
 export function propOrientation(spec: PropSpec, dir?: PropDir): PropOrientation | null {
@@ -139,6 +139,25 @@ export function withState(orientation: PropOrientation, state: string | null | u
     const region = state != null ? orientation.states?.[state] : undefined;
 
     return region ? { ...orientation, ...region } : orientation;
+}
+
+/** Имена состояний стороны в стабильном порядке — по ним и идёт цикл переключения. */
+export function propStateNames(orientation: PropOrientation): string[] {
+    return Object.keys(orientation.states ?? {}).sort();
+}
+
+/**
+ * Следующее состояние по кругу (X по switchable-предмету). null — переключать
+ * нечего: у стороны нет состояний. Неизвестное текущее считаем «перед первым».
+ */
+export function nextPropState(orientation: PropOrientation, current: string | null | undefined): string | null {
+    const names = propStateNames(orientation);
+    if (names.length === 0) {
+        return null;
+    }
+    const i = current != null ? names.indexOf(current) : -1;
+
+    return names[(i + 1) % names.length];
 }
 
 export function propSheetUrl(orientation: Pick<PropOrientation, 'sheet'>): string {

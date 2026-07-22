@@ -6,6 +6,7 @@ use App\Http\Requests\MapUpdateRequest;
 use App\Models\DoorState;
 use App\Models\Message;
 use App\Models\PropCategory;
+use App\Models\PropState;
 use App\Models\PropType;
 use App\Models\Room;
 use App\Support\CurrentUser;
@@ -55,6 +56,9 @@ class RoomController extends Controller
             'propTypes' => PropType::catalogue(),
             // открыта дверь или заперта — состояние игры, оно вне карты
             'doorStates' => DoorState::forRoom($room),
+            // переключённые предметы (телевизор вкл/выкл) — тоже состояние игры;
+            // предмет без записи показывается в состоянии по умолчанию
+            'propStates' => PropState::forRoom($room),
         ]);
     }
 

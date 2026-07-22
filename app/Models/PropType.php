@@ -100,6 +100,21 @@ class PropType extends Model
     }
 
     /**
+     * Ориентация из спеки каталога с тем же фолбэком, что у клиента
+     * (game/props.ts, propOrientation): dir → south → первая попавшаяся. Логика
+     * одна на все серверные проверки, чтобы сервер и клиент видели один предмет.
+     *
+     * @param  PropSpec  $spec
+     * @return OrientationSpec|null
+     */
+    public static function orientationOf(array $spec, ?string $dir): ?array
+    {
+        $orientations = $spec['orientations'];
+
+        return $orientations[$dir ?? 'south'] ?? $orientations['south'] ?? (reset($orientations) ?: null);
+    }
+
+    /**
      * Ориентации в каноническом порядке сторон — чтобы каталог и экспорт не
      * зависели от порядка вставки строк.
      *

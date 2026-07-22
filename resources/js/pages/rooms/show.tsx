@@ -44,6 +44,7 @@ interface RoomShowProps extends SharedData {
     canEdit: boolean;
     propTypes: PropCatalogue;
     doorStates: Record<string, DoorState>;
+    propStates: Record<string, string>;
 }
 
 // координаты прибытия из портала (?x=..&y=..) важнее сохранённой позиции
@@ -69,7 +70,7 @@ export default function RoomShow() {
 }
 
 function RoomView({ me }: { me: User }) {
-    const { room, history, lastPosition, canEdit, propTypes, doorStates } = usePage<RoomShowProps>().props;
+    const { room, history, lastPosition, canEdit, propTypes, doorStates, propStates } = usePage<RoomShowProps>().props;
     const canvasHost = useRef<HTMLDivElement | null>(null);
     const messagesEnd = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState('');
@@ -119,6 +120,7 @@ function RoomView({ me }: { me: User }) {
         map: room.map,
         propTypes,
         doorStates,
+        propStates,
         initialPosition: arrivalPosition() ?? lastPosition,
         history,
         onPortal: (portal: PortalData) => {

@@ -2,7 +2,7 @@ import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { cutoutPolygon, GHOST_ALPHA, SPRITE_TOP } from './cutout';
-import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type MapObjectType } from './map';
+import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type MapObjectType, type PropData } from './map';
 import { drawDoor } from './render/doors';
 import { COLORS } from './render/palette';
 import { loadPropTextures, resolvePropView } from './render/prop-sprites';
@@ -125,6 +125,16 @@ export class OfficeScene {
     private sceneTime = 0;
     private portalPads: Graphics[] = [];
     private objectNodes = new Map<string, { icon: Text; ring: Graphics; baseY: number }>();
+    // Спрайты каждого предмета: по ним setPropState меняет фреймы, не трогая лист.
+    // `state` — что сейчас нарисовано, `wanted` — что заказано: по нему отбрасываем
+    // доехавшие позже загрузки, а провалившаяся не «залипает» (wanted вернётся к state).
+    private propNodes = new Map<
+        string,
+        { prop: PropData; base: Sprite; tall: Sprite | null; ghost: Sprite | null; state: string | undefined; wanted: string | undefined }
+    >();
+    // `| undefined` в значении не для красоты: у предмета без записи ключа нет,
+    // а без него индексирование Record соврало бы, что состояние всегда есть
+    private propStates: Record<string, string | undefined>;
     private highlightedObject: string | null = null;
     private shakeTime = 0;
     private pings: { node: Text; age: number }[] = [];
@@ -134,7 +144,16 @@ export class OfficeScene {
     private chunkGrid: Size;
     private chunkRange: ChunkRange | null = null;
 
-    constructor(private map: GameMap) {
+    /**
+     * `propStates` — снапшот переключённых предметов с сервера: предмет без
+     * записи рисуется в состоянии по умолчанию из каталога. Приходит в
+     * конструктор, а не сеттером, чтобы первая отрисовка сразу была верной.
+     */
+    constructor(
+        private map: GameMap,
+        propStates: Record<string, string | undefined> = {},
+    ) {
+        this.propStates = { ...propStates };
         this.chunkGrid = {
             width: Math.ceil(map.width / CHUNK_TILES),
             height: Math.ceil(map.height / CHUNK_TILES),
@@ -214,9 +233,9 @@ export class OfficeScene {
      */
     private drawProps(): void {
         for (const prop of this.map.props) {
-            // пока предметом никто не пользуется, он в состоянии по умолчанию;
-            // живое переключение приедет вместе с prop_states
-            const orientation = resolvePropView(this.map.catalogue, prop);
+            // предмет без записи в prop_states рисуется в состоянии по умолчанию
+            const state = this.propStates[prop.id];
+            const orientation = resolvePropView(this.map.catalogue, prop, state);
             if (!orientation) {
                 continue;
             }
@@ -224,6 +243,8 @@ export class OfficeScene {
             loadPropTextures(orientation)
                 .then(({ base, tall }) => {
                     if (this.destroyed) {
+                        base.destroy();
+                        tall?.destroy();
                         return;
                     }
 
@@ -231,29 +252,92 @@ export class OfficeScene {
                     baseSprite.position.set(prop.x * TILE, prop.y * TILE);
                     this.propBaseLayer.addChild(baseSprite);
 
-                    if (!tall) {
-                        return;
-                    }
-                    const [node, ghost] = [this.overheadLayer, this.overheadGhost].map((layer) => {
-                        const sprite = new Sprite(tall);
-                        sprite.position.set(prop.x * TILE, (prop.y - orientation.tall) * TILE);
-                        layer.addChild(sprite);
-                        return sprite;
-                    });
+                    let tallSprite: Sprite | null = null;
+                    let ghostSprite: Sprite | null = null;
+                    if (tall) {
+                        const [node, ghost] = [this.overheadLayer, this.overheadGhost].map((layer) => {
+                            const sprite = new Sprite(tall);
+                            sprite.position.set(prop.x * TILE, (prop.y - orientation.tall) * TILE);
+                            layer.addChild(sprite);
+                            return sprite;
+                        });
+                        tallSprite = node;
+                        ghostSprite = ghost;
 
-                    // клетки, которые эта часть закрывает собой
-                    const tiles = new Set<number>();
-                    for (let dy = 1; dy <= orientation.tall; dy++) {
-                        for (let dx = 0; dx < orientation.w; dx++) {
-                            tiles.add((prop.y - dy) * this.map.width + prop.x + dx);
+                        // клетки, которые эта часть закрывает собой
+                        const tiles = new Set<number>();
+                        for (let dy = 1; dy <= orientation.tall; dy++) {
+                            for (let dx = 0; dx < orientation.w; dx++) {
+                                tiles.add((prop.y - dy) * this.map.width + prop.x + dx);
+                            }
                         }
+                        this.addOverheadPiece(node, ghost, tiles);
                     }
-                    this.addOverheadPiece(node, ghost, tiles);
+
+                    this.propNodes.set(prop.id, { prop, base: baseSprite, tall: tallSprite, ghost: ghostSprite, state, wanted: state });
+
+                    // состояние могли переключить, пока грузился лист
+                    const latest = this.propStates[prop.id];
+                    if (latest !== undefined && latest !== state) {
+                        this.setPropState(prop.id, latest);
+                    }
                 })
                 .catch(() => {
                     // спрайтшита нет — предмет просто не отрисуется
                 });
         }
+    }
+
+    /**
+     * Переключает состояние предмета: регион берётся у состояния, геометрия
+     * остаётся прежней, поэтому меняем только фреймы — лист уже в кэше Assets.
+     */
+    setPropState(id: string, state: string): void {
+        this.propStates[id] = state;
+        const node = this.propNodes.get(id);
+        if (!node || node.wanted === state) {
+            return; // предмет ещё не дорисован (drawProps подхватит сам) либо уже заказан
+        }
+        const previous = node.wanted;
+        node.wanted = state;
+
+        const orientation = resolvePropView(this.map.catalogue, node.prop, state);
+        if (!orientation) {
+            node.wanted = previous; // рисовать нечего — заказ снимаем
+            return;
+        }
+
+        loadPropTextures(orientation)
+            .then(({ base, tall }) => {
+                // за время загрузки состояние могли переключить ещё раз
+                if (this.destroyed || node.wanted !== state) {
+                    base.destroy();
+                    tall?.destroy();
+                    return;
+                }
+                node.state = state;
+                const oldBase = node.base.texture;
+                node.base.texture = base;
+                oldBase.destroy(); // общий source остаётся в кэше Assets, режем только фрейм
+
+                if (node.tall && tall) {
+                    const oldTall = node.tall.texture;
+                    node.tall.texture = tall;
+                    if (node.ghost) {
+                        node.ghost.texture = tall; // полупрозрачная копия — тот же фрейм
+                    }
+                    oldTall.destroy();
+                } else {
+                    tall?.destroy();
+                }
+            })
+            .catch(() => {
+                // листа нет — предмет остаётся в прежнем состоянии, но заказ
+                // снимаем: иначе повтор того же состояния уйдёт в ранний return
+                if (node.wanted === state) {
+                    node.wanted = node.state;
+                }
+            });
     }
 
     /**

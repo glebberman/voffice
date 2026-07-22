@@ -1,6 +1,7 @@
 import { makeMap, type MapData } from '@/game/map';
 import {
     nextPropDir,
+    nextPropState,
     propAt,
     propBaseRect,
     propDirs,
@@ -9,6 +10,7 @@ import {
     propInteractionCells,
     propOrientation,
     propSpec,
+    propStateNames,
     propTallRect,
     withState,
     type PropCatalogue,
@@ -270,15 +272,22 @@ describe('зона взаимодействия', () => {
 
 describe('интерактивные предметы (поведение)', () => {
     it('embed-предмет отвечает в клетках своей зоны', () => {
-        // телевизор из каталога — behavior embed, зона перед экраном
-        const map = makeMap(baseMap([{ id: 'tv1', type: 'tv', x: 2, y: 3 }]), PROP_SPECS);
+        // ноутбук из каталога — behavior embed, зона перед ним
+        const map = makeMap(baseMap([{ id: 'lap1', type: 'laptop', x: 2, y: 3 }]), PROP_SPECS);
         const front = map.interactableAt(2, 4);
 
-        expect(front?.prop.type).toBe('tv');
+        expect(front?.prop.type).toBe('laptop');
         expect(front?.spec.behavior).toBe('embed');
         expect(front?.cells.length).toBeGreaterThan(0);
         expect(map.interactableAt(2, 3)).toBeNull(); // основание — не зона
         expect(map.interactableAt(6, 6)).toBeNull(); // пустая клетка
+    });
+
+    it('switchable-предмет интерактивен так же — отличается только поведение', () => {
+        // телевизор: состояния off/no-signal/on, зона перед экраном
+        const map = makeMap(baseMap([{ id: 'tv1', type: 'tv', x: 2, y: 3 }]), PROP_SPECS);
+
+        expect(map.interactableAt(2, 4)?.spec.behavior).toBe('switchable');
     });
 
     it('обычная мебель без поведения не интерактивна', () => {
@@ -318,6 +327,23 @@ describe('состояния предмета', () => {
         const bin = orient('bin');
 
         expect(withState(bin, 'on')).toBe(bin);
+    });
+
+    it('состояния перечисляются в стабильном порядке и крутятся по кругу', () => {
+        const tv = orient('tv');
+        const names = propStateNames(tv);
+
+        expect(names).toEqual(['no-signal', 'off', 'on']);
+        expect(nextPropState(tv, 'no-signal')).toBe('off');
+        expect(nextPropState(tv, 'on')).toBe('no-signal'); // цикл замкнулся
+        // неизвестное/отсутствующее текущее считаем «перед первым»
+        expect(nextPropState(tv, null)).toBe('no-signal');
+        expect(nextPropState(tv, 'нет-такого')).toBe('no-signal');
+    });
+
+    it('у предмета без состояний переключать нечего', () => {
+        expect(propStateNames(orient('bin'))).toEqual([]);
+        expect(nextPropState(orient('bin'), null)).toBeNull();
     });
 });
 

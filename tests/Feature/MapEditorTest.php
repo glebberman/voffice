@@ -209,8 +209,8 @@ class MapEditorTest extends TestCase
         $map = $this->validMap();
         $map['rows'] = ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'];
         $map['spawn'] = ['x' => 3, 'y' => 4];
-        // телевизор — тип с поведением embed (см. props.json)
-        $tv = ['id' => 'tv1', 'type' => 'tv', 'x' => 2, 'y' => 5];
+        // ноутбук — тип с поведением embed (см. props.json)
+        $tv = ['id' => 'lap1', 'type' => 'laptop', 'x' => 2, 'y' => 5];
         $withProp = fn (array $prop): array => array_merge($map, ['props' => [$prop]]);
 
         // валидные настройки embed сохраняются вместе с картой

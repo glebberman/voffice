@@ -249,11 +249,7 @@
             "id": "tv-17",
             "type": "tv",
             "x": 8,
-            "y": 33,
-            "settings": {
-                "label": "Лаунж-ТВ",
-                "url": "https://www.youtube.com/embed/jNQXAC9IVRw"
-            }
+            "y": 33
         },
         {
             "id": "coffee-maker-18",
@@ -280,6 +276,16 @@
             "x": 39,
             "y": 27,
             "dir": "east"
+        },
+        {
+            "id": "laptop-1",
+            "type": "laptop",
+            "x": 34,
+            "y": 4,
+            "settings": {
+                "label": "Доска команды",
+                "url": "https://wbo.ophir.dev/boards/voffice-demo"
+            }
         }
     ],
     "doors": [

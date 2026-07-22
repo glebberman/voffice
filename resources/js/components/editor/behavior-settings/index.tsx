@@ -5,7 +5,7 @@ import { EmbedForm } from './EmbedForm';
  * Настройки поведения выделенного предмета: по behavior типа выбирается форма.
  * Пишет в `props[].settings` карты (у каждого поставленного предмета они свои).
  * Обычная мебель (behavior null) и поведения без настроек в карте не рисуют
- * ничего. switchable подключится с VOF-31.
+ * ничего: switchable берёт состояния у типа, настройки инстанса ему не нужны.
  */
 export function BehaviorSettings({
     behavior,

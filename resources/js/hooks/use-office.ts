@@ -12,7 +12,7 @@ import {
     type Zone,
 } from '@/game/map';
 import { findStep } from '@/game/path';
-import type { PropCatalogue } from '@/game/props';
+import { nextPropState, propOrientation, propStateNames, type PropCatalogue } from '@/game/props';
 import { OfficeScene } from '@/game/scene';
 import { newTabId, shouldYieldTo, type TabHello } from '@/game/tabs';
 import type {
@@ -88,11 +88,16 @@ const DIR_DELTA: Record<Direction, { dx: number; dy: number }> = {
 /**
  * Подпись для подсказки/модалки интерактивного предмета — по поведению. null,
  * если предмету пока нечем ответить (embed без настроек): тогда ни подсказки,
- * ни подсветки, ни реакции на X. switchable подключится с VOF-31.
+ * ни подсветки, ни реакции на X.
  */
 function interactionLabel(target: InteractionTarget): string | null {
     if (target.spec.behavior === 'embed') {
         return parseEmbedSettings(target.prop.settings)?.label ?? null;
+    }
+    if (target.spec.behavior === 'switchable') {
+        // переключать есть что, только если у стороны заданы состояния
+        const orientation = propOrientation(target.spec, target.prop.dir);
+        return orientation && propStateNames(orientation).length > 0 ? target.spec.label : null;
     }
     return null;
 }
@@ -104,6 +109,8 @@ export interface OfficeOptions {
     propTypes: PropCatalogue;
     // открыта дверь или заперта — состояние игры, оно вне карты
     doorStates: Record<string, DoorState>;
+    // переключённые предметы (телевизор вкл/выкл) — тоже состояние игры
+    propStates: Record<string, string>;
     roomSlug: string;
     initialPosition: { x: number; y: number } | null;
     history: RoomMessage[];
@@ -170,6 +177,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const nearbyInteractionRef = useRef<InteractionTarget | null>(null);
     // чья зона сейчас подсвечена — чтобы не перерисовывать её на каждом шаге
     const highlightedPropRef = useRef<string | null>(null);
+    // состояния предметов: снапшот с сервера + оптимистичные переключения и эхо.
+    // `| undefined` — у непереключённого предмета ключа нет (рисуется дефолтом)
+    const propStatesRef = useRef<Record<string, string | undefined>>({ ...options.propStates });
     const activeFrameRef = useRef<EmbedSettings | null>(null);
     const portalTriggeredRef = useRef(false);
     const onPortalRef = useRef(options.onPortal);
@@ -294,7 +304,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     );
 
     useEffect(() => {
-        const scene = new OfficeScene(map);
+        const scene = new OfficeScene(map, propStatesRef.current);
         sceneRef.current = scene;
         let cancelled = false;
 
@@ -768,6 +778,12 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             // дверь дёрнул кто-то из комнаты (see DoorChanged)
             .listen('.door.changed', (p: { id: string; closed: boolean; locked: boolean }) => {
                 sceneRef.current?.setDoorState(p.id, { closed: p.closed, locked: p.locked });
+            })
+            // предмет переключил кто-то из комнаты (see PropChanged); своё эхо
+            // тоже приходит — оно лишь подтверждает уже применённое
+            .listen('.prop.changed', (p: { id: string; state: string }) => {
+                propStatesRef.current[p.id] = p.state;
+                sceneRef.current?.setPropState(p.id, p.state);
             });
 
         // периодическое сохранение позиции (+ при закрытии страницы)
@@ -863,6 +879,42 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             setActiveFrame(frame);
         };
 
+        /**
+         * Переключить switchable-предмет на следующее состояние. Применяем сразу
+         * (предмет должен отзываться мгновенно), сервер подтверждает эхом
+         * prop.changed; отказ — откат к прежнему состоянию.
+         */
+        const toggleProp = (target: InteractionTarget) => {
+            const orientation = propOrientation(target.spec, target.prop.dir);
+            if (!orientation) {
+                return;
+            }
+            const id = target.prop.id;
+            // сюда доходим только если состояния есть, поэтому запасной вариант
+            // (первое имя) всегда существует — откатываться будет куда
+            const previous = propStatesRef.current[id] ?? target.spec.defaultState ?? propStateNames(orientation)[0];
+            const next = nextPropState(orientation, previous);
+            if (next === null) {
+                return;
+            }
+
+            propStatesRef.current[id] = next;
+            sceneRef.current?.setPropState(id, next);
+
+            const me = self();
+            postJson(`/rooms/${options.roomSlug}/prop-states`, { id, state: next, x: me.x, y: me.y }).catch(() => {
+                // Сервер отказал (отошли от предмета, тип не тот) — откатываемся,
+                // но только если состояние всё ещё наше: пока висел запрос, могло
+                // прийти эхо от другого игрока, и затирать его нельзя.
+                if (propStatesRef.current[id] === next) {
+                    propStatesRef.current[id] = previous;
+                    sceneRef.current?.setPropState(id, previous);
+                }
+                setDoorHint('Не выходит');
+                window.setTimeout(() => setDoorHint(null), 1600);
+            });
+        };
+
         const onKeyDown = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement | null;
             if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
@@ -875,6 +927,12 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 return;
             }
 
+            // Автоповтор зажатой X слал бы запросы пачкой, а уступившая вкладка
+            // молчит — её позиция устарела и тянуться ей нечем.
+            if (e.code === 'KeyX' && (e.repeat || yieldedRef.current)) {
+                return;
+            }
+
             // X — взаимодействие: ближайший объект → интерактивный предмет →
             // дверь рядом. Shift+X — замок двери.
             if (e.code === 'KeyX' && !e.shiftKey) {
@@ -884,11 +942,19 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                     openFrame({ label: obj.label, url: obj.url });
                     return;
                 }
+                // дальше диспетчер по поведению предмета, в зоне которого стоим
                 const target = nearbyInteractionRef.current;
-                const embed = target ? parseEmbedSettings(target.prop.settings) : null;
-                if (embed) {
+                if (target?.spec.behavior === 'embed') {
+                    const embed = parseEmbedSettings(target.prop.settings);
+                    if (embed) {
+                        e.preventDefault();
+                        openFrame(embed);
+                        return;
+                    }
+                }
+                if (target?.spec.behavior === 'switchable') {
                     e.preventDefault();
-                    openFrame(embed);
+                    toggleProp(target);
                     return;
                 }
             }

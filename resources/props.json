@@ -190,7 +190,7 @@
             "label": "Телевизор",
             "description": "Телевизор с состояниями: выключен, без сигнала, включён.",
             "defaultState": "off",
-            "behavior": "embed",
+            "behavior": "switchable",
             "purposes": ["media"],
             "roomKinds": ["meeting", "lounge"],
             "orientations": {
@@ -270,6 +270,7 @@
         "laptop": {
             "label": "Ноутбук выключенный вперед",
             "description": "Ноутбук на столе.",
+            "behavior": "embed",
             "purposes": ["tech"],
             "roomKinds": ["openspace"],
             "orientations": {
@@ -279,7 +280,13 @@
                     "sy": 0,
                     "w": 1,
                     "h": 1,
-                    "tall": 0
+                    "tall": 0,
+                    "interaction": [
+                        {
+                            "dx": 0,
+                            "dy": 1
+                        }
+                    ]
                 }
             }
         }

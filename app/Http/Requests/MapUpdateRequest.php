@@ -40,20 +40,6 @@ class MapUpdateRequest extends FormRequest
     }
 
     /**
-     * Ориентация предмета с тем же фолбэком, что у клиента
-     * (game/props.ts, propOrientation): dir → south → первая попавшаяся.
-     *
-     * @param  PropSpec  $spec
-     * @return OrientationSpec|null
-     */
-    private static function orientationOf(array $spec, ?string $dir): ?array
-    {
-        $orientations = $spec['orientations'];
-
-        return $orientations[$dir ?? 'south'] ?? $orientations['south'] ?? (reset($orientations) ?: null);
-    }
-
-    /**
      * Строки карты — если они действительно массив строк.
      *
      * Здесь мы работаем с сырым вводом: правила из rules() могли не пройти, и
@@ -146,7 +132,9 @@ class MapUpdateRequest extends FormRequest
             // предметы обстановки: тип берётся из каталога resources/props.json,
             // размеры оттуда же — в карте хранится только тип и позиция
             'map.props' => ['sometimes', 'array', 'max:2000'],
-            'map.props.*.id' => ['required', 'string', 'max:64'],
+            // id уникален: по нему адресуются состояния (prop_states) и спрайты
+            // в сцене — дубль означал бы, что переключают не тот предмет
+            'map.props.*.id' => ['required', 'string', 'max:64', 'distinct'],
             'map.props.*.type' => ['required', 'string', Rule::in(array_keys($this->propCatalogue()))],
             'map.props.*.x' => ['required', 'integer', 'min:0'],
             'map.props.*.y' => ['required', 'integer', 'min:0'],
@@ -274,7 +262,7 @@ class MapUpdateRequest extends FormRequest
 
                         continue;
                     }
-                    $orientation = self::orientationOf($spec, $dir);
+                    $orientation = PropType::orientationOf($spec, $dir);
                     if ($orientation === null) {
                         continue; // тип без ориентаций каталог не отдаёт
                     }

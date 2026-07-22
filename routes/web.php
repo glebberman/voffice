@@ -5,6 +5,7 @@ use App\Http\Controllers\DoorController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\PropCategoryController;
+use App\Http\Controllers\PropStateController;
 use App\Http\Controllers\PropTypeController;
 use App\Http\Controllers\RoomController;
 use App\Models\Room;
@@ -45,6 +46,12 @@ Route::middleware(['auth'])->group(function (): void {
     Route::delete('prop-categories/{prop_category}', [PropCategoryController::class, 'destroy'])->name('prop-categories.destroy');
 
     Route::post('rooms/{room:slug}/doors', [DoorController::class, 'update'])->name('doors.update');
+    // переключение состояния предмета (switchable) — по образцу дверей.
+    // throttle: каждый запрос читает каталог, пишет в БД и вещает всей комнате,
+    // так что зажатая клавиша не должна превращаться в поток
+    Route::post('rooms/{room:slug}/prop-states', [PropStateController::class, 'update'])
+        ->middleware('throttle:60,1')
+        ->name('prop-states.update');
 
     Route::post('messages', [MessageController::class, 'store'])->name('messages.store');
     Route::post('position', [PositionController::class, 'update'])->name('position.update');
