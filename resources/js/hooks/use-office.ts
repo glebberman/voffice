@@ -366,13 +366,16 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             if (yieldedRef.current) {
                 return;
             }
+            // Прощаемся ДО установки флага: say() из уступившей вкладки молчит,
+            // и прощальный announceCall не ушёл бы — у остальных мы висели бы
+            // призраком в звонке до следующего heartbeat.
+            if (inCallRef.current.has(userRef.current.id)) {
+                callApiRef.current?.leave(); // из молчащей вкладки звонок вести нельзя
+            }
             yieldedRef.current = true;
             setYielded(true);
             pressedRef.current = [];
             followTargetRef.current = null;
-            if (inCallRef.current.has(userRef.current.id)) {
-                callApiRef.current?.leave(); // из молчащей вкладки звонок вести нельзя
-            }
         };
 
         takeOverRef.current = () => {
@@ -525,6 +528,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         callApiRef.current = {
             join: async () => {
                 if (isInCall()) {
+                    return;
+                }
+                // Уступившая вкладка молчит: сигналинг и announceCall не уйдут,
+                // связь не установится, а камера и микрофон уже были бы заняты.
+                if (yieldedRef.current) {
+                    setCallError('Офис открыт в другой вкладке — звонок ведут там');
+
                     return;
                 }
                 setCallError(null);

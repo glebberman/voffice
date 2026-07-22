@@ -288,6 +288,7 @@ function RoomView({ me }: { me: User }) {
 
                     <CallPanel
                         inCall={inCall}
+                        yielded={yielded}
                         micOn={micOn}
                         camOn={camOn}
                         screenOn={screenOn}

@@ -35,6 +35,8 @@ function VideoTile({ peer }: { peer: { name: string; stream: MediaStream | null;
 
 interface CallPanelProps {
     inCall: boolean;
+    // офис ведут в другой вкладке: эта молчит, звонок из неё не соберётся
+    yielded: boolean;
     micOn: boolean;
     camOn: boolean;
     screenOn: boolean;
@@ -52,6 +54,7 @@ interface CallPanelProps {
 
 export function CallPanel({
     inCall,
+    yielded,
     micOn,
     camOn,
     screenOn,
@@ -75,7 +78,7 @@ export function CallPanel({
                     Звонок {inCall && <span className="text-muted-foreground font-normal">({peerList.length + 1})</span>}
                 </h2>
                 {!inCall ? (
-                    <Button size="sm" className="ml-auto h-8" onClick={onJoin}>
+                    <Button size="sm" className="ml-auto h-8" onClick={onJoin} disabled={yielded}>
                         <Phone className="size-4" />
                         Присоединиться
                     </Button>
