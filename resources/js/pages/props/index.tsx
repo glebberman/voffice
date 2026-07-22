@@ -117,11 +117,21 @@ export default function PropsCatalogue() {
     const stateNames = Object.keys(draft.orientations.at(0)?.states ?? {}).sort();
     const stateRegion = active && activeState !== null ? active.states[activeState] : undefined;
 
+    // Ключ, который мы только что отправили на создание. Подхватываем новый тип
+    // из свежего списка ТОЛЬКО по успешному POST: искать по набранному в форме
+    // ключу нельзя — введённый вручную занятый slug молча переключил бы форму на
+    // чужой предмет, и «Сохранить» перезаписало бы его черновиком.
+    const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+    // запрос в полёте: второй клик по «Добавить в каталог» прервал бы первый,
+    // и предмет создался бы, а форма осталась бы «новой» с ошибкой уникальности
+    const [busy, setBusy] = useState(false);
+
     const select = (type: PropTypeRow) => {
         setSelectedId(type.id);
         setDraft(draftOf(type));
         setActiveDir(type.orientations.at(0)?.dir ?? 'south');
         setActiveState(null);
+        setCreatedSlug(null); // ушли с формы создания — перехватывать нечего
     };
 
     const startNew = () => {
@@ -129,18 +139,30 @@ export default function PropsCatalogue() {
         setDraft(emptyDraft(active?.sheet ?? sheets.at(0) ?? ''));
         setActiveDir('south');
         setActiveState(null);
+        setCreatedSlug(null);
     };
 
-    // После создания типа страница перезагружается списком с сервера —
-    // подхватываем новый тип, иначе форма осталась бы «новой» с занятым ключом.
+    // После создания страница перезагружается списком с сервера — иначе форма
+    // осталась бы «новой» с уже занятым ключом. Берём тип целиком: серверная
+    // версия отличается от черновика (сортировка клеток зоны, порядок состояний).
     useEffect(() => {
-        if (selectedId === null) {
-            const created = types.find((t) => t.slug === draft.slug);
-            if (created) {
-                setSelectedId(created.id);
-            }
+        if (createdSlug === null) {
+            return;
         }
-    }, [types, selectedId, draft.slug]);
+        const created = types.find((t) => t.slug === createdSlug);
+        if (created) {
+            select(created);
+        }
+    }, [types, createdSlug]);
+
+    // Выбранного типа не стало (удалили здесь или в соседней вкладке) — форма
+    // правит несуществующий id, и «Сохранить» ушло бы в PUT с 404.
+    useEffect(() => {
+        if (selectedId !== null && !types.some((t) => t.id === selectedId)) {
+            startNew();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [types, selectedId]);
 
     const patchOrientation = (dir: PropDir, patch: Partial<OrientationRow>) => {
         setDraft((d) => ({ ...d, orientations: d.orientations.map((o) => (o.dir === dir ? { ...o, ...patch } : o)) }));
@@ -228,13 +250,16 @@ export default function PropsCatalogue() {
                 interaction: o.interaction,
             })),
         };
+        setBusy(true);
+        const done = { preserveScroll: true, onFinish: () => setBusy(false) };
         if (selectedId === null) {
-            router.post('/props', payload, { preserveScroll: true });
+            router.post('/props', payload, { ...done, onSuccess: () => setCreatedSlug(payload.slug) });
         } else {
-            router.put(`/props/${selectedId}`, payload, { preserveScroll: true });
+            router.put(`/props/${selectedId}`, payload, done);
         }
     };
 
+    // форму, которая правит удалённый тип, вернёт в «Новый предмет» эффект выше
     const remove = (type: PropTypeRow) => {
         router.delete(`/props/${type.id}`, { preserveScroll: true });
     };
@@ -440,7 +465,7 @@ export default function PropsCatalogue() {
                             )}
                         </div>
 
-                        <Button className="mt-3 w-full" size="sm" onClick={submit} disabled={incomplete}>
+                        <Button className="mt-3 w-full" size="sm" onClick={submit} disabled={incomplete || busy}>
                             <Save className="size-3.5" />
                             {selectedId === null ? 'Добавить в каталог' : 'Сохранить'}
                         </Button>
