@@ -1,5 +1,5 @@
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
-import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
+import { DIR_ROW, loadAvatar, releaseAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { cutoutPolygon, GHOST_ALPHA, SPRITE_TOP } from './cutout';
 import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type PropData } from './map';
@@ -521,12 +521,20 @@ export class OfficeScene {
 
     destroy(): void {
         this.destroyed = true;
+        // app.destroy сносит дерево, но не нарезанные кадры: они держат подписку
+        // на source из кэша Assets, а тот переживает переход между комнатами
         for (const sprite of this.players.values()) {
             if (sprite.bubbleTimer) {
                 clearTimeout(sprite.bubbleTimer);
             }
+            releaseAvatar(sprite.avatar);
         }
         this.players.clear();
+        for (const node of this.propNodes.values()) {
+            node.base.texture.destroy();
+            node.tall?.texture.destroy(); // ghost показывает тот же фрейм
+        }
+        this.propNodes.clear();
         this.chunks.clear(); // сами Graphics уничтожит app.destroy вместе с деревом
         if (this.ready) {
             this.ready = false;
@@ -617,12 +625,14 @@ export class OfficeScene {
         const gen = ++sprite.lookGen;
         void loadAvatar(id, cfg).then((layers) => {
             if (this.destroyed || this.players.get(id) !== sprite || sprite.lookGen !== gen || layers.length === 0) {
+                releaseAvatar(layers); // проигравшее поколение всё равно нарезано — освобождаем
                 return;
             }
             for (const old of sprite.charSprites) {
                 old.destroy();
             }
             sprite.charSprites = [];
+            releaseAvatar(sprite.avatar); // прежний образ больше не нужен
             sprite.avatar = layers;
             layers.forEach((_, i) => {
                 const s = new Sprite(layers[i][DIR_ROW[sprite.dir]][Math.min(sprite.frame, layers[i][0].length - 1)]);
@@ -680,6 +690,7 @@ export class OfficeScene {
         // в pings уронила бы тикер на первом же кадре — и рендер целиком
         this.pings = this.pings.filter((ping) => ping.node.parent !== sprite.root);
         sprite.root.destroy({ children: true });
+        releaseAvatar(sprite.avatar);
         this.players.delete(id);
     }
 

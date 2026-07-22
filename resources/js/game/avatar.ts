@@ -130,6 +130,23 @@ function sliceWalk(tex: Texture): Texture[][] {
 
 export type AvatarLayers = Texture[][][]; // [слой][направление][кадр]
 
+/**
+ * Освобождает нарезанные кадры образа. `Texture.destroy()` по умолчанию не
+ * трогает source — лист остаётся в кэше Assets и переиспользуется, — но снимает
+ * подписку кадра на resize листа. Без этого список слушателей source копит все
+ * когда-либо нарезанные кадры (по ~250 на образ), и вкладка, живущая днями,
+ * растёт с каждым входом коллеги, сменой образа и переходом между комнатами.
+ */
+export function releaseAvatar(layers: AvatarLayers | null): void {
+    for (const layer of layers ?? []) {
+        for (const row of layer) {
+            for (const frame of row) {
+                frame.destroy();
+            }
+        }
+    }
+}
+
 export function layerUrl(path: string): string {
     return `${BASE}/${path}`;
 }

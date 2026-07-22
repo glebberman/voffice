@@ -160,6 +160,13 @@ export class EditorScene {
 
     destroy(): void {
         this.destroyed = true;
+        // нарезанные фреймы предметов держат подписку на лист из кэша Assets —
+        // app.destroy их не трогает, а редактор открывают и закрывают часто
+        for (const layer of [this.propBaseLayer, this.overheadLayer]) {
+            for (const c of layer.removeChildren()) {
+                c.destroy({ texture: true });
+            }
+        }
         if (this.ready) {
             this.app.destroy(true, { children: true });
         }
