@@ -1,4 +1,4 @@
-import { blockedByProps, hasAccess, propZoneCells, reachableFromSpawn, zoneAvailability } from '@/editor/availability';
+import { blockedByProps, footprintCells, hasAccess, propZoneCells, reachableFromSpawn, zoneAvailability } from '@/editor/availability';
 import type { PropData } from '@/game/map';
 import type { PropCatalogue } from '@/game/props';
 import { describe, expect, it } from 'vitest';
@@ -8,6 +8,11 @@ const CATALOGUE: PropCatalogue = {
     stool: {
         label: 'Табурет',
         orientations: { south: { sheet: 'office/laptop_1.png', sx: 0, sy: 0, w: 1, h: 1, tall: 0, interaction: [{ dx: 0, dy: 1 }] } },
+    },
+    // столбик 1×1 с зоной справа
+    post: {
+        label: 'Столбик',
+        orientations: { south: { sheet: 'office/laptop_1.png', sx: 0, sy: 0, w: 1, h: 1, tall: 0, interaction: [{ dx: 1, dy: 0 }] } },
     },
     // скамья 2×1 без зоны
     bench: {
@@ -68,6 +73,7 @@ describe('достижимость от спавна', () => {
 
 describe('вердикт по зоне предмета', () => {
     const corridor = ['#####', '#...#', '#...#', '#####'];
+    const spawn = { x: 1, y: 1 };
 
     it('зона считается от origin предмета', () => {
         expect(propZoneCells(CATALOGUE, prop('s1', 'stool', 2, 1))).toEqual([{ x: 2, y: 2 }]);
@@ -78,7 +84,7 @@ describe('вердикт по зоне предмета', () => {
         const stool = prop('s1', 'stool', 2, 1);
         const blocked = blockedByProps(CATALOGUE, [stool], 5);
         const reachable = reachableFromSpawn(corridor, blocked, { x: 1, y: 1 });
-        const zone = zoneAvailability(propZoneCells(CATALOGUE, stool), reachable, 5, corridor.length);
+        const zone = zoneAvailability(propZoneCells(CATALOGUE, stool), reachable, 5, corridor.length, spawn);
 
         expect(zone).toEqual([{ x: 2, y: 2, ok: true }]);
         expect(hasAccess(zone)).toBe(true);
@@ -89,7 +95,7 @@ describe('вердикт по зоне предмета', () => {
         const walled = ['#####', '#...#', '#####', '#...#', '#####'];
         const stool = prop('s1', 'stool', 2, 3); // зона — (2,4), это стена
         const reachable = reachableFromSpawn(walled, blockedByProps(CATALOGUE, [stool], 5), { x: 1, y: 1 });
-        const zone = zoneAvailability(propZoneCells(CATALOGUE, stool), reachable, 5, walled.length);
+        const zone = zoneAvailability(propZoneCells(CATALOGUE, stool), reachable, 5, walled.length, spawn);
 
         expect(zone).toEqual([{ x: 2, y: 4, ok: false }]);
         expect(hasAccess(zone)).toBe(false);
@@ -101,10 +107,23 @@ describe('вердикт по зоне предмета', () => {
 
         // предмет у левого края: (-1,1) по индексу — это (2,0), и она достижима
         expect(reachable.has(1 * 3 - 1)).toBe(true);
-        expect(zoneAvailability([{ x: -1, y: 1 }], reachable, 3, 3)).toEqual([{ x: -1, y: 1, ok: false }]);
+        expect(zoneAvailability([{ x: -1, y: 1 }], reachable, 3, 3, { x: 0, y: 0 })).toEqual([{ x: -1, y: 1, ok: false }]);
         // у правого края (типичная зона dx:+1): (3,1) по индексу — это (0,2)
         expect(reachable.has(1 * 3 + 3)).toBe(true);
-        expect(zoneAvailability([{ x: 3, y: 1 }], reachable, 3, 3)).toEqual([{ x: 3, y: 1, ok: false }]);
+        expect(zoneAvailability([{ x: 3, y: 1 }], reachable, 3, 3, { x: 0, y: 0 })).toEqual([{ x: 3, y: 1, ok: false }]);
+    });
+
+    it('предмет, встав на место, может сам отрезать свою зону', () => {
+        // коридор в одну клетку: столбик на (2,1) перекрывает единственный путь
+        // к своей же зоне (3,1)
+        const narrow = ['#####', '#...#', '#####'];
+        const reachable = reachableFromSpawn(narrow, new Set(), spawn);
+        const ghost = { type: 'post', x: 2, y: 1 };
+        const future = new Set(footprintCells(CATALOGUE, ghost).map((c) => c.y * 5 + c.x));
+
+        expect(zoneAvailability(propZoneCells(CATALOGUE, ghost), reachable, 5, narrow.length, spawn, future)).toEqual([{ x: 3, y: 1, ok: false }]);
+        // без учёта будущего основания та же клетка выглядела бы доступной
+        expect(zoneAvailability(propZoneCells(CATALOGUE, ghost), reachable, 5, narrow.length, spawn)).toEqual([{ x: 3, y: 1, ok: true }]);
     });
 
     it('предмет без зоны недоступен по определению', () => {

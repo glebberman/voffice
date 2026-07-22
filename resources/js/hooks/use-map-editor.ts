@@ -480,31 +480,36 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     const zoneWidth = deferredRows[0]?.length ?? 0;
     const zoneHeight = deferredRows.length;
 
-    // Прежнее место переносимого предмета ему же не мешает, а вот будущее —
-    // перекрывает проход: иначе зона светилась бы зелёным ровно там, где
-    // предмет сам себя и отрежет.
+    // Прежнее место переносимого предмета ему же не мешает.
     const draggingId = dragTarget && move && move.index < props.length ? props[move.index].id : undefined;
-    const blocked = useMemo(() => {
-        const set = blockedByProps(catalogue, props, zoneWidth, draggingId);
+    const blocked = useMemo(() => blockedByProps(catalogue, props, zoneWidth, draggingId), [catalogue, props, zoneWidth, draggingId]);
+
+    // считать нечего, если ни одного функционального предмета и никого не ведут
+    const hasFunctional = useMemo(() => props.some((p) => propSpec(catalogue, p.type)?.behavior != null), [props, catalogue]);
+    const showsZone = zoneKey !== '';
+    // Полный обход намеренно НЕ зависит от предмета на курсоре: иначе он шёл бы
+    // заново на каждый тайл под мышью. Место, которое предмет займёт, влияет
+    // только локально — его проверяет stillReachable.
+    const reachable = useMemo(
+        () => (hasFunctional || showsZone ? reachableFromSpawn(deferredRows, blocked, spawn) : NOTHING_REACHABLE),
+        [hasFunctional, showsZone, deferredRows, blocked, spawn],
+    );
+
+    // клетки, которые займёт предмет, встав туда, куда его ведут
+    const futureFootprint = useMemo(() => {
+        const set = new Set<number>();
         for (const cell of zoneOf ? footprintCells(catalogue, zoneOf) : []) {
             set.add(cell.y * zoneWidth + cell.x);
         }
         return set;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [catalogue, props, zoneWidth, draggingId, zoneKey]);
-
-    // считать нечего, если ни одного функционального предмета и никого не ведут
-    const hasFunctional = useMemo(() => props.some((p) => propSpec(catalogue, p.type)?.behavior != null), [props, catalogue]);
-    const reachable = useMemo(
-        () => (hasFunctional || zoneKey !== '' ? reachableFromSpawn(deferredRows, blocked, spawn) : NOTHING_REACHABLE),
-        [hasFunctional, zoneKey, deferredRows, blocked, spawn],
-    );
+    }, [zoneKey, catalogue, zoneWidth]);
 
     const interactionZone = useMemo(() => {
         const cells = zoneOf ? propZoneCells(catalogue, zoneOf) : [];
-        return cells.length > 0 ? zoneAvailability(cells, reachable, zoneWidth, zoneHeight) : null;
+        return cells.length > 0 ? zoneAvailability(cells, reachable, zoneWidth, zoneHeight, spawn, futureFootprint) : null;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [zoneKey, catalogue, reachable, zoneWidth, zoneHeight]);
+    }, [zoneKey, catalogue, reachable, zoneWidth, zoneHeight, spawn, futureFootprint]);
 
     // значок «недоступен» у функциональных предметов, к которым не подойти
     const unavailableMarks = useMemo(
@@ -515,12 +520,13 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
                 if (!spec?.behavior || !orientation) {
                     return [];
                 }
-                if (hasAccess(zoneAvailability(propZoneCells(catalogue, prop), reachable, zoneWidth, zoneHeight))) {
+                const zone = zoneAvailability(propZoneCells(catalogue, prop), reachable, zoneWidth, zoneHeight, spawn, futureFootprint);
+                if (hasAccess(zone)) {
                     return [];
                 }
                 return [{ x: prop.x + orientation.w / 2, y: prop.y + orientation.h / 2 }]; // середина основания
             }),
-        [catalogue, props, reachable, zoneWidth, zoneHeight],
+        [catalogue, props, reachable, zoneWidth, zoneHeight, spawn, futureFootprint],
     );
 
     return {
