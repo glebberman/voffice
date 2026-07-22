@@ -24,7 +24,7 @@ class ExportResources extends Command
     protected $description = 'Выгрузить карты и каталог предметов из БД в resources/';
 
     /** Порядок ключей карты: чтобы диф оставался читаемым, а не прыгал. */
-    private const MAP_KEYS = ['rows', 'spawn', 'zones', 'objects', 'portals', 'props', 'doors'];
+    private const MAP_KEYS = ['rows', 'spawn', 'zones', 'portals', 'props', 'doors'];
 
     public function handle(): int
     {

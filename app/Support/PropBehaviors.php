@@ -60,8 +60,7 @@ class PropBehaviors
             $errors[] = 'Подпись встраиваемого предмета — непустая строка до 80 символов';
         }
         // Адрес уезжает в iframe, поэтому только http(s): filter_var пропускает
-        // javascript:/file:/foo:, а рядом (map.objects.*.url) правило `url`
-        // такое режет — проверки не должны расходиться.
+        // javascript:, file: и прочее, чему в iframe делать нечего.
         if (! Str::isUrl($urlText, ['http', 'https']) || mb_strlen($urlText) > 500) {
             $errors[] = 'Адрес встраиваемого предмета — http(s)-ссылка до 500 символов';
         }

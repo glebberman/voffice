@@ -126,7 +126,6 @@ class PropTypeTest extends TestCase
             'rows' => ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'],
             'spawn' => ['x' => 3, 'y' => 4],
             'zones' => [],
-            'objects' => [],
             'portals' => [],
             'props' => [['id' => 'b1', 'type' => 'bookshelf', 'x' => 2, 'y' => 5]],
         ];
@@ -386,7 +385,6 @@ class PropTypeTest extends TestCase
             'rows' => ['#######', '#.....#', '#.....#', '#.....#', '#..*..#', '#.....#', '#######'],
             'spawn' => ['x' => 3, 'y' => 4],
             'zones' => [],
-            'objects' => [],
             'portals' => [],
             'props' => [$prop],
         ];
@@ -407,7 +405,6 @@ class PropTypeTest extends TestCase
             'rows' => ['#####', '#...#', '#.*.#', '#...#', '#####'],
             'spawn' => ['x' => 2, 'y' => 2],
             'zones' => [],
-            'objects' => [],
             'portals' => [],
             'props' => [['id' => 'x', 'type' => 'batut', 'x' => 1, 'y' => 3]],
         ];

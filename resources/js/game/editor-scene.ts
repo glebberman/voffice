@@ -3,7 +3,7 @@ import { clampOffset, EDITOR_ZOOM_DEFAULT, EDITOR_ZOOMS, screenToTile, zoomToCur
 import { zonePreset } from '@/editor/zone-presets';
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
-import { TILE, type DoorData, type MapObjectData, type PortalData, type PropData, type Zone } from './map';
+import { TILE, type DoorData, type PortalData, type PropData, type Zone } from './map';
 import type { PropCatalogue } from './props';
 import { loadPropTextures, resolvePropView } from './render/prop-sprites';
 import { drawChunk } from './render/tiles';
@@ -284,7 +284,7 @@ export class EditorScene {
         }
     }
 
-    setMarkers(spawn: Point, objects: MapObjectData[], portals: PortalData[]): void {
+    setMarkers(spawn: Point, portals: PortalData[]): void {
         for (const c of this.markerLayer.removeChildren()) {
             c.destroy();
         }
@@ -294,9 +294,6 @@ export class EditorScene {
         this.markerLayer.addChild(this.emoji('⚑', spawn.x, spawn.y));
         for (const portal of portals) {
             this.markerLayer.addChild(this.emoji('🌀', portal.x, portal.y));
-        }
-        for (const obj of objects) {
-            this.markerLayer.addChild(this.emoji('📌', obj.x, obj.y));
         }
     }
 

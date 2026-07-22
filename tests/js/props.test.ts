@@ -54,7 +54,6 @@ const baseMap = (props: MapData['props']): MapData => ({
     rows: ['########', '#......#', '#......#', '#......#', '#......#', '#......#', '#......#', '########'],
     spawn: { x: 1, y: 1 },
     zones: [],
-    objects: [],
     portals: [],
     props,
 });

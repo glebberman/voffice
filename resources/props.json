@@ -289,6 +289,67 @@
                     ]
                 }
             }
+        },
+        "board": {
+            "label": "Доска",
+            "description": "Доска на стене: открывает встроенное окно — доску, карту или видео. Сторона «вправо» — для вертикальной стены.",
+            "behavior": "embed",
+            "purposes": ["media"],
+            "roomKinds": ["openspace", "meeting", "kitchen", "lounge"],
+            "orientations": {
+                "south": {
+                    "sheet": "office/Office Portraits.png",
+                    "sx": 32,
+                    "sy": 0,
+                    "w": 1,
+                    "h": 1,
+                    "tall": 0,
+                    "interaction": [
+                        {
+                            "dx": 0,
+                            "dy": -1
+                        },
+                        {
+                            "dx": -1,
+                            "dy": 0
+                        },
+                        {
+                            "dx": 1,
+                            "dy": 0
+                        },
+                        {
+                            "dx": 0,
+                            "dy": 1
+                        }
+                    ]
+                },
+                "east": {
+                    "sheet": "office/Office Portraits.png",
+                    "sx": 0,
+                    "sy": 0,
+                    "w": 1,
+                    "h": 1,
+                    "tall": 0,
+                    "interaction": [
+                        {
+                            "dx": 0,
+                            "dy": -1
+                        },
+                        {
+                            "dx": -1,
+                            "dy": 0
+                        },
+                        {
+                            "dx": 1,
+                            "dy": 0
+                        },
+                        {
+                            "dx": 0,
+                            "dy": 1
+                        }
+                    ]
+                }
+            }
         }
     }
 }

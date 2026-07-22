@@ -1,5 +1,5 @@
-import { CHAT_RADIUS, makeMap, OBJECT_RADIUS, tilesBetween, type MapData } from '@/game/map';
-import type { PropCatalogue } from '@/game/props';
+import { CHAT_RADIUS, makeMap, type MapData } from '@/game/map';
+import { propInteractionCells, propOrientation, type PropCatalogue } from '@/game/props';
 import { describe, expect, it } from 'vitest';
 import coworkingData from '../../resources/maps/coworking.json';
 import officeData from '../../resources/maps/office.json';
@@ -62,27 +62,23 @@ describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
         }
     });
 
-    it('к каждому объекту можно подойти на радиус взаимодействия', () => {
-        // ищем только в окрестности объекта: скан всей карты давал
-        // O(объекты × ширина × высота) и на больших картах это миллионы итераций
-        const reach = Math.ceil(OBJECT_RADIUS);
-        for (const obj of map.objects) {
-            let reachable = false;
-            for (let dy = -reach; dy <= reach && !reachable; dy++) {
-                for (let dx = -reach; dx <= reach && !reachable; dx++) {
-                    const x = obj.x + dx;
-                    const y = obj.y + dy;
-                    if (map.isWalkable(x, y) && tilesBetween(x, y, obj.x, obj.y) <= OBJECT_RADIUS) {
-                        reachable = true;
-                    }
-                }
+    it('у каждого функционального предмета есть клетка, на которой можно стоять', () => {
+        for (const prop of map.props) {
+            const spec = CATALOGUE[prop.type];
+            const orientation = spec?.behavior ? propOrientation(spec, prop.dir) : null;
+            if (!orientation) {
+                continue; // обычная мебель: подходить к ней незачем
             }
-            expect(reachable, `объект ${obj.label}`).toBe(true);
+            const cells = propInteractionCells(orientation, prop);
+            expect(
+                cells.some((c) => map.isWalkable(c.x, c.y)),
+                `предмет ${prop.id}`,
+            ).toBe(true);
         }
     });
 
-    it('id объектов уникальны', () => {
-        const ids = map.objects.map((o) => o.id);
+    it('id предметов уникальны', () => {
+        const ids = map.props.map((p) => p.id);
         expect(new Set(ids).size).toBe(ids.length);
     });
 });
@@ -139,10 +135,11 @@ describe('офисная карта: геометрия и правила', () =
         expect(map.resolveSpawn({ x: 0, y: 0 })).toEqual(map.spawn);
     });
 
-    it('portalAt и nearestObject находят сущности', () => {
+    it('portalAt и interactableAt находят сущности', () => {
         expect(map.portalAt(2, 14)?.to).toBe('coworking');
         expect(map.portalAt(6, 8)).toBeNull();
-        expect(map.nearestObject(19, 2)?.id).toBe('office-board');
-        expect(map.nearestObject(6, 8)).toBeNull();
+        // доска команды переехала из map.objects в предмет: стоя перед ней, её видно
+        expect(map.interactableAt(20, 1)?.prop.id).toBe('office-board');
+        expect(map.interactableAt(6, 8)).toBeNull();
     });
 });

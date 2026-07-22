@@ -14,7 +14,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *     rows: list<string>,
  *     spawn: array{x: int, y: int},
  *     zones: list<array<string, mixed>>,
- *     objects: list<array<string, mixed>>,
  *     portals: list<array<string, mixed>>,
  *     props?: list<array{id: string, type: string, x: int, y: int, dir?: string, settings?: array<string, string>}>,
  *     doors?: list<array{id: string, x: int, y: int, lock: string|null}>,

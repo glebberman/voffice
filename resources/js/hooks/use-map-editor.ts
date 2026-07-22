@@ -10,7 +10,6 @@ import {
     setTile,
     type DoorData,
     type MapData,
-    type MapObjectData,
     type PortalData,
     type PropData,
     type Zone,
@@ -50,7 +49,6 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     // строки карты как есть: правка одной строки вместо копирования всей сетки
     const [rows, setRows] = useState<string[]>(room.map.rows);
     const [spawn, setSpawn] = useState(room.map.spawn);
-    const [objects, setObjects] = useState<MapObjectData[]>(room.map.objects);
     const [portals, setPortals] = useState<PortalData[]>(room.map.portals);
     const [props, setProps] = useState<PropData[]>(room.map.props ?? []);
     const [doors, setDoors] = useState<DoorData[]>(room.map.doors ?? []);
@@ -348,7 +346,6 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         const h = Math.max(3, Math.min(MAX_MAP_SIZE, sizeDraft.h));
         setRows((prev) => resizeRows(prev, w, h));
         setSpawn((prev) => ({ x: Math.min(prev.x, w - 2), y: Math.min(prev.y, h - 2) }));
-        setObjects((prev) => prev.filter((o) => o.x < w && o.y < h));
         setPortals((prev) => prev.filter((p) => p.x < w && p.y < h));
         setDoors((prev) => prev.filter((d) => d.x < w && d.y < h));
         setProps((prev) =>
@@ -369,7 +366,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     const save = () => {
         setSaving(true);
         setErrors([]);
-        const map: MapData = { rows, spawn, zones, objects, portals, props, doors };
+        const map: MapData = { rows, spawn, zones, portals, props, doors };
         router.put(
             `/rooms/${room.slug}`,
             { name, map: map as unknown as Record<string, never> },
@@ -480,8 +477,6 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         rows,
         spawn,
         setSpawn,
-        objects,
-        setObjects,
         portals,
         setPortals,
         props,

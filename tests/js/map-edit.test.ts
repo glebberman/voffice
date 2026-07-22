@@ -43,7 +43,7 @@ describe('resizeRows', () => {
             [64, 64],
         ]) {
             const rows = resizeRows(sample, w, h);
-            const map = makeMap({ rows, spawn: { x: 1, y: 1 }, zones: [], objects: [], portals: [] } as MapData);
+            const map = makeMap({ rows, spawn: { x: 1, y: 1 }, zones: [], portals: [] } as MapData);
             expect(map.width).toBe(w);
             expect(map.height).toBe(h);
             // периметр непроходим

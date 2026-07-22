@@ -36,7 +36,6 @@ class MapEditorTest extends TestCase
             'rows' => ['#####', '#...#', '#.*.#', '#...#', '#####'],
             'spawn' => ['x' => 2, 'y' => 2],
             'zones' => [],
-            'objects' => [],
             'portals' => [],
         ];
     }
@@ -99,7 +98,6 @@ class MapEditorTest extends TestCase
             ),
             'spawn' => ['x' => 5, 'y' => 5],
             'zones' => [],
-            'objects' => [],
             'portals' => [],
         ];
 
@@ -130,11 +128,6 @@ class MapEditorTest extends TestCase
         $wallSpawn = $this->validMap();
         $wallSpawn['spawn'] = ['x' => 0, 'y' => 0];
         $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $wallSpawn])->assertSessionHasErrors('map.spawn');
-
-        // объект за границей
-        $oob = $this->validMap();
-        $oob['objects'] = [['id' => 'a', 'type' => 'board', 'label' => 'x', 'url' => 'https://a.b', 'x' => 99, 'y' => 99]];
-        $this->actingAs($admin)->put('/rooms/office', ['name' => 'X', 'map' => $oob])->assertSessionHasErrors('map.objects.0');
 
         // портал в несуществующую комнату
         $badPortal = $this->validMap();

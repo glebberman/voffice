@@ -49,7 +49,7 @@ class RoomTest extends TestCase
                 ->component('rooms/show')
                 ->where('room.slug', 'office')
                 ->has('room.map.rows')
-                ->has('room.map.objects')
+                ->has('room.map.props')
                 ->has('room.map.portals')
                 ->has('history')
                 ->where('lastPosition', null),

@@ -1,16 +1,6 @@
 import type { AvatarConfig } from '@/game/avatar';
 import { parseEmbedSettings, type EmbedSettings } from '@/game/behaviors';
-import {
-    makeMap,
-    tilesBetween,
-    type DoorData,
-    type DoorState,
-    type InteractionTarget,
-    type MapData,
-    type MapObjectData,
-    type PortalData,
-    type Zone,
-} from '@/game/map';
+import { makeMap, tilesBetween, type DoorData, type DoorState, type InteractionTarget, type MapData, type PortalData, type Zone } from '@/game/map';
 import { findStep } from '@/game/path';
 import { nextPropState, propOrientation, propStateNames, type PropCatalogue } from '@/game/props';
 import { OfficeScene } from '@/game/scene';
@@ -126,13 +116,13 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const [connected, setConnected] = useState(false);
     const [statuses, setStatuses] = useState<Record<number, PlayerStatus>>({});
     const [myStatus, setMyStatusState] = useState<ManualStatus>('available');
-    // подсказка «{label} — нажмите X»: ближайший объект или интерактивный предмет
+    // подсказка «{label} — нажмите X» у предмета, в зоне которого стоим
     const [interactionHint, setInteractionHint] = useState<string | null>(null);
     // короткое «Заперто» под картой, когда дверь не поддалась
     const [doorHint, setDoorHint] = useState<string | null>(null);
     // офис открыт в другой вкладке: эта замолчала и ничего не отправляет
     const [yielded, setYielded] = useState(false);
-    // открытая iframe-модалка: и старые map.objects, и embed-предметы дают {label, url}
+    // открытая iframe-модалка: её открывает embed-предмет своими {label, url}
     const [activeFrame, setActiveFrame] = useState<EmbedSettings | null>(null);
 
     // звонок по близости (WebRTC)
@@ -172,7 +162,6 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
     const tabIdRef = useRef(newTabId());
     const yieldedRef = useRef(false);
     const takeOverRef = useRef<() => void>(() => undefined);
-    const nearbyObjectRef = useRef<MapObjectData | null>(null);
     // интерактивный предмет, в зоне которого стоим (для X)
     const nearbyInteractionRef = useRef<InteractionTarget | null>(null);
     // чья зона сейчас подсвечена — чтобы не перерисовывать её на каждом шаге
@@ -237,29 +226,20 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         [map],
     );
 
-    // ближайшая интерактивная штука: объект (радиус 1.6) или предмет (клетка зоны)
+    // предмет, в зоне которого стоим: его подсвечиваем и по нему сработает X
     const updateNearby = useCallback(
         (x: number, y: number) => {
-            const obj = map.nearestObject(x, y);
-            if (obj?.id !== nearbyObjectRef.current?.id) {
-                nearbyObjectRef.current = obj;
-                sceneRef.current?.setObjectHighlight(obj?.id ?? null);
-            }
             // предмет считаем интерактивным, только если поведению есть чем ответить
             const raw = map.interactableAt(x, y);
             const target = raw && interactionLabel(raw) !== null ? raw : null;
             if (target?.prop.id !== nearbyInteractionRef.current?.prop.id) {
                 nearbyInteractionRef.current = target;
             }
-            // подсвечиваем зону, только когда X сработает именно по предмету:
-            // у объекта приоритет, иначе зелёная зона обманывала бы
-            const lit = obj ? null : target;
-            if ((lit?.prop.id ?? null) !== highlightedPropRef.current) {
-                highlightedPropRef.current = lit?.prop.id ?? null;
-                sceneRef.current?.setInteractionHighlight(lit?.cells ?? null);
+            if ((target?.prop.id ?? null) !== highlightedPropRef.current) {
+                highlightedPropRef.current = target?.prop.id ?? null;
+                sceneRef.current?.setInteractionHighlight(target?.cells ?? null);
             }
-            // подсказка: объект приоритетнее (он «в радиусе»), иначе предмет
-            const hint = obj?.label ?? (target ? interactionLabel(target) : null);
+            const hint = target ? interactionLabel(target) : null;
             setInteractionHint((prev) => (prev === hint ? prev : hint));
         },
         [map],
@@ -873,7 +853,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             recomputeCall(); // мой сдвиг мог изменить состав звонка
         };
 
-        // открыть iframe-модалку (объект или embed-предмет дают {label, url})
+        // открыть iframe-модалку: адрес и подпись приезжают из settings предмета
         const openFrame = (frame: EmbedSettings) => {
             activeFrameRef.current = frame;
             setActiveFrame(frame);
@@ -933,16 +913,10 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 return;
             }
 
-            // X — взаимодействие: ближайший объект → интерактивный предмет →
-            // дверь рядом. Shift+X — замок двери.
+            // X — взаимодействие: интерактивный предмет → дверь рядом.
+            // Shift+X — замок двери.
             if (e.code === 'KeyX' && !e.shiftKey) {
-                const obj = nearbyObjectRef.current;
-                if (obj) {
-                    e.preventDefault();
-                    openFrame({ label: obj.label, url: obj.url });
-                    return;
-                }
-                // дальше диспетчер по поведению предмета, в зоне которого стоим
+                // диспетчер по поведению предмета, в зоне которого стоим
                 const target = nearbyInteractionRef.current;
                 if (target?.spec.behavior === 'embed') {
                     const embed = parseEmbedSettings(target.prop.settings);

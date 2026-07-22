@@ -149,6 +149,6 @@ class ExportResourcesTest extends TestCase
 
         // порядок ключей фиксирован, иначе диф прыгал бы при каждой выгрузке
         $keys = array_keys(JsonFile::read($this->to.'/maps/office.json'));
-        $this->assertSame(['rows', 'spawn', 'zones', 'objects', 'portals', 'props', 'doors'], $keys);
+        $this->assertSame(['rows', 'spawn', 'zones', 'portals', 'props', 'doors'], $keys);
     }
 }

@@ -15,7 +15,6 @@ const walled = makeMap({
     rows: ['#######', '#..#..#', '#..#..#', '#.....#', '#######'],
     spawn: { x: 1, y: 1 },
     zones: [],
-    objects: [],
     portals: [],
 });
 
@@ -70,7 +69,6 @@ describe('findStep на большой карте', () => {
         rows: Array.from({ length: size }, (_, y) => (y === 0 || y === size - 1 ? '#'.repeat(size) : '#' + '.'.repeat(size - 2) + '#')),
         spawn: { x: 1, y: 1 },
         zones: [],
-        objects: [],
         portals: [],
     });
 

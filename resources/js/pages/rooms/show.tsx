@@ -176,7 +176,7 @@ function RoomView({ me }: { me: User }) {
                         {selfStatus === 'away' && <Badge variant="secondary">Отошёл</Badge>}
                         <div className="ml-auto flex items-center gap-2">
                             <span className="text-muted-foreground hidden text-xs xl:block">
-                                Стрелки/WASD · реакции 1–5 · X — объект/предмет и дверь · Shift+X — замок
+                                Стрелки/WASD · реакции 1–5 · X — предмет и дверь · Shift+X — замок
                             </span>
                             {doorHint && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{doorHint}</span>}
                             {canEdit && (

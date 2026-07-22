@@ -112,32 +112,6 @@
             "y2": 33
         }
     ],
-    "objects": [
-        {
-            "id": "office-board",
-            "type": "board",
-            "label": "Доска команды",
-            "url": "https://wbo.ophir.dev/boards/voffice-demo",
-            "x": 20,
-            "y": 2
-        },
-        {
-            "id": "office-tv",
-            "type": "video",
-            "label": "Телевизор в лаунже",
-            "url": "https://www.youtube.com/embed/jNQXAC9IVRw",
-            "x": 17,
-            "y": 12
-        },
-        {
-            "id": "office-kitchen-map",
-            "type": "map",
-            "label": "Карта: кофейни поблизости",
-            "url": "https://www.openstreetmap.org/export/embed.html?bbox=37.58,55.73,37.64,55.77&layer=mapnik",
-            "x": 13,
-            "y": 2
-        }
-    ],
     "portals": [
         {
             "x": 2,
@@ -285,6 +259,36 @@
             "settings": {
                 "label": "Доска команды",
                 "url": "https://wbo.ophir.dev/boards/voffice-demo"
+            }
+        },
+        {
+            "id": "office-board",
+            "type": "board",
+            "x": 20,
+            "y": 2,
+            "settings": {
+                "label": "Доска команды",
+                "url": "https://wbo.ophir.dev/boards/voffice-demo"
+            }
+        },
+        {
+            "id": "office-tv",
+            "type": "board",
+            "x": 17,
+            "y": 12,
+            "settings": {
+                "label": "Телевизор в лаунже",
+                "url": "https://www.youtube.com/embed/jNQXAC9IVRw"
+            }
+        },
+        {
+            "id": "office-kitchen-map",
+            "type": "board",
+            "x": 13,
+            "y": 2,
+            "settings": {
+                "label": "Карта: кофейни поблизости",
+                "url": "https://www.openstreetmap.org/export/embed.html?bbox=37.58,55.73,37.64,55.77&layer=mapnik"
             }
         }
     ],

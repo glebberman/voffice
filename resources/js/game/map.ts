@@ -13,9 +13,6 @@ export const TILE = 32;
 // Радиус текстового чата в тайлах (как proximity-чат в Gather)
 export const CHAT_RADIUS = 4;
 
-// радиус, с которого можно взаимодействовать с объектом
-export const OBJECT_RADIUS = 1.6;
-
 export interface Zone {
     name: string;
     x1: number;
@@ -27,17 +24,6 @@ export interface Zone {
     // тип помещения (переговорка/кухня/…) — задел под стили; игра пока
     // игнорирует, редактор красит зону цветом пресета. Отсутствие = «своя».
     kind?: string;
-}
-
-export type MapObjectType = 'board' | 'video' | 'map' | 'link';
-
-export interface MapObjectData {
-    id: string;
-    type: MapObjectType;
-    label: string;
-    url: string;
-    x: number;
-    y: number;
 }
 
 export interface PortalData {
@@ -109,7 +95,6 @@ export interface MapData {
     rows: string[];
     spawn: { x: number; y: number };
     zones: Zone[];
-    objects: MapObjectData[];
     portals: PortalData[];
     props?: PropData[];
     doors?: DoorData[];
@@ -202,7 +187,6 @@ export interface GameMap {
     height: number;
     spawn: { x: number; y: number };
     zones: Zone[];
-    objects: MapObjectData[];
     portals: PortalData[];
     props: PropData[];
     doors: DoorData[];
@@ -230,7 +214,6 @@ export interface GameMap {
     canHear(lx: number, ly: number, sx: number, sy: number): boolean;
     resolveSpawn(stored: { x: number; y: number } | null | undefined): { x: number; y: number };
     portalAt(x: number, y: number): PortalData | null;
-    nearestObject(x: number, y: number): MapObjectData | null;
     /** Интерактивный предмет, в зоне которого стоит клетка (x,y), или null. */
     interactableAt(x: number, y: number): InteractionTarget | null;
 }
@@ -435,7 +418,6 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
         height,
         spawn: data.spawn,
         zones: data.zones,
-        objects: data.objects,
         portals: data.portals,
         props,
         doors,
@@ -455,18 +437,6 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
         // сохранённая позиция может устареть (карта изменилась) — проверяем проходимость
         resolveSpawn: (stored) => (stored && isWalkable(stored.x, stored.y) ? stored : data.spawn),
         portalAt: (x, y) => data.portals.find((p) => p.x === x && p.y === y) ?? null,
-        nearestObject: (x, y) => {
-            let best: MapObjectData | null = null;
-            let bestDist = OBJECT_RADIUS;
-            for (const obj of data.objects) {
-                const dist = tilesBetween(x, y, obj.x, obj.y);
-                if (dist <= bestDist) {
-                    best = obj;
-                    bestDist = dist;
-                }
-            }
-            return best;
-        },
         interactableAt,
     };
 }

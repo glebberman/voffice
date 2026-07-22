@@ -2,7 +2,7 @@ import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { DIR_ROW, loadAvatar, WALK_COLS, type AvatarConfig, type AvatarLayers } from './avatar';
 import { approach, cameraOffset, CHUNK_TILES, chunkRangeContains, visibleChunkRange, type ChunkRange, type Point, type Size } from './camera';
 import { cutoutPolygon, GHOST_ALPHA, SPRITE_TOP } from './cutout';
-import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type MapObjectType, type PropData } from './map';
+import { CHAT_RADIUS, TILE, type DoorState, type GameMap, type PropData } from './map';
 import { drawDoor } from './render/doors';
 import { COLORS } from './render/palette';
 import { loadPropTextures, resolvePropView } from './render/prop-sprites';
@@ -20,13 +20,6 @@ function measureViewport(host: HTMLElement): Size {
         height: Math.round(rect.height) || DEFAULT_VIEWPORT.height,
     };
 }
-
-const OBJECT_EMOJI: Record<MapObjectType, string> = {
-    board: '📝',
-    video: '📺',
-    map: '🗺️',
-    link: '🔗',
-};
 
 const STATUS_COLORS: Record<PlayerStatus, number> = {
     available: 0x22c55e,
@@ -124,7 +117,6 @@ export class OfficeScene {
     private ready = false;
     private sceneTime = 0;
     private portalPads: Graphics[] = [];
-    private objectNodes = new Map<string, { icon: Text; ring: Graphics; baseY: number }>();
     // Спрайты каждого предмета: по ним setPropState меняет фреймы, не трогая лист.
     // `state` — что сейчас нарисовано, `wanted` — что заказано: по нему отбрасываем
     // доехавшие позже загрузки, а провалившаяся не «залипает» (wanted вернётся к state).
@@ -135,7 +127,6 @@ export class OfficeScene {
     // `| undefined` в значении не для красоты: у предмета без записи ключа нет,
     // а без него индексирование Record соврало бы, что состояние всегда есть
     private propStates: Record<string, string | undefined>;
-    private highlightedObject: string | null = null;
     private shakeTime = 0;
     private pings: { node: Text; age: number }[] = [];
     private viewport = { ...DEFAULT_VIEWPORT };
@@ -206,7 +197,6 @@ export class OfficeScene {
         this.world.addChild(this.playerLayer);
         this.world.addChild(this.overheadLayer);
         this.world.addChild(this.overheadGhost);
-        this.drawObjects();
         this.app.stage.addChild(this.world);
 
         this.overheadGhost.alpha = GHOST_ALPHA;
@@ -782,14 +772,10 @@ export class OfficeScene {
             });
         }
 
-        // пульс порталов и покачивание иконок объектов
+        // пульс порталов
         const pulse = 0.55 + 0.35 * Math.sin(this.sceneTime / 350);
         for (const pad of this.portalPads) {
             pad.alpha = pulse;
-        }
-        const bob = Math.sin(this.sceneTime / 400) * 3;
-        for (const node of this.objectNodes.values()) {
-            node.icon.position.y = node.baseY + bob;
         }
 
         const step = (MOVE_SPEED * deltaMS) / 1000;
@@ -951,18 +937,6 @@ export class OfficeScene {
         }
     }
 
-    setObjectHighlight(id: string | null): void {
-        if (this.highlightedObject === id) {
-            return;
-        }
-        this.highlightedObject = id;
-        for (const [objectId, node] of this.objectNodes) {
-            const active = objectId === id;
-            node.ring.visible = active;
-            node.icon.scale.set(active ? 1.25 : 1);
-        }
-    }
-
     /** Светло-зелёная заливка клеток зоны предмета, в которой стоит персонаж. */
     setInteractionHighlight(cells: { x: number; y: number }[] | null): void {
         this.interactionHighlight.clear();
@@ -980,25 +954,6 @@ export class OfficeScene {
             pad.ellipse(cx, cy, 7, 4).fill({ color: 0xe8e2ff, alpha: 0.8 });
             this.world.addChild(pad);
             this.portalPads.push(pad);
-        }
-    }
-
-    private drawObjects(): void {
-        for (const obj of this.map.objects) {
-            const cx = obj.x * TILE + TILE / 2;
-            const baseY = obj.y * TILE - 4;
-
-            const ring = new Graphics();
-            ring.ellipse(cx, obj.y * TILE + TILE / 2, 15, 10).stroke({ width: 2, color: 0xffc914, alpha: 0.9 });
-            ring.visible = false;
-            this.world.addChild(ring);
-
-            const icon = new Text({ text: OBJECT_EMOJI[obj.type], style: { fontSize: 15 } });
-            icon.anchor.set(0.5, 1);
-            icon.position.set(cx, baseY);
-            this.world.addChild(icon);
-
-            this.objectNodes.set(obj.id, { icon, ring, baseY });
         }
     }
 

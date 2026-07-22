@@ -11,16 +11,17 @@
         "#................#",
         "##################"
     ],
-    "spawn": { "x": 7, "y": 7 },
-    "zones": [{ "name": "Лаунж", "x1": 10, "y1": 2, "x2": 15, "y2": 4 }],
-    "objects": [
+    "spawn": {
+        "x": 7,
+        "y": 7
+    },
+    "zones": [
         {
-            "id": "cowork-board",
-            "type": "board",
-            "label": "Доска коворкинга",
-            "url": "https://wbo.ophir.dev/boards/voffice-cowork",
-            "x": 3,
-            "y": 2
+            "name": "Лаунж",
+            "x1": 10,
+            "y1": 2,
+            "x2": 15,
+            "y2": 4
         }
     ],
     "portals": [
@@ -31,6 +32,18 @@
             "label": "В офис",
             "tx": 3,
             "ty": 14
+        }
+    ],
+    "props": [
+        {
+            "id": "cowork-board",
+            "type": "board",
+            "x": 3,
+            "y": 2,
+            "settings": {
+                "label": "Доска коворкинга",
+                "url": "https://wbo.ophir.dev/boards/voffice-cowork"
+            }
         }
     ]
 }

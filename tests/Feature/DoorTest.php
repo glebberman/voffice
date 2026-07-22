@@ -37,7 +37,6 @@ class DoorTest extends TestCase
             'rows' => ['#######', '#.....#', '#.....#', '###.###', '#.....#', '#.....#', '#######'],
             'spawn' => ['x' => 1, 'y' => 1],
             'zones' => [],
-            'objects' => [],
             'portals' => [],
             'doors' => [
                 ['id' => 'plain', 'x' => 3, 'y' => 3, 'lock' => null],

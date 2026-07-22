@@ -1,6 +1,6 @@
 import type { ZoneCell } from '@/editor/availability';
 import { EditorScene, type PropGhostView, type PropSelectionView, type RectPreview } from '@/game/editor-scene';
-import type { DoorData, MapObjectData, PortalData, PropData, Zone } from '@/game/map';
+import type { DoorData, PortalData, PropData, Zone } from '@/game/map';
 import type { PropCatalogue } from '@/game/props';
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 
@@ -23,7 +23,6 @@ interface EditorCanvasProps {
     props: PropData[];
     doors: DoorData[];
     spawn: Tile;
-    objects: MapObjectData[];
     portals: PortalData[];
     zones: Zone[];
     selectedZone: number | null;
@@ -56,7 +55,6 @@ export function EditorCanvas({
     props,
     doors,
     spawn,
-    objects,
     portals,
     zones,
     selectedZone,
@@ -109,7 +107,7 @@ export function EditorCanvas({
     useEffect(() => sceneRef.current?.applyRows(rows), [rows]);
     useEffect(() => sceneRef.current?.setProps(props), [props]);
     useEffect(() => sceneRef.current?.setDoors(doors), [doors]);
-    useEffect(() => sceneRef.current?.setMarkers(spawn, objects, portals), [spawn, objects, portals]);
+    useEffect(() => sceneRef.current?.setMarkers(spawn, portals), [spawn, portals]);
     useEffect(() => sceneRef.current?.setZones(zones, selectedZone), [zones, selectedZone]);
     useEffect(() => sceneRef.current?.setRectPreview(rectPreview), [rectPreview]);
     useEffect(() => sceneRef.current?.setPropGhost(propGhost), [propGhost]);

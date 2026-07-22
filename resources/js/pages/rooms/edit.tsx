@@ -2,7 +2,6 @@ import { CataloguePanel, type PropCategoryInfo } from '@/components/editor/Catal
 import { DoorsPanel } from '@/components/editor/DoorsPanel';
 import { EditorCanvas } from '@/components/editor/EditorCanvas';
 import { MapSettingsPanel } from '@/components/editor/MapSettingsPanel';
-import { ObjectsPanel } from '@/components/editor/ObjectsPanel';
 import { PortalsPanel } from '@/components/editor/PortalsPanel';
 import { PropSettingsPanel } from '@/components/editor/PropSettingsPanel';
 import { TilePanel } from '@/components/editor/TilePanel';
@@ -54,7 +53,6 @@ export default function RoomEdit() {
                         props={ed.props}
                         doors={ed.doors}
                         spawn={ed.spawn}
-                        objects={ed.objects}
                         portals={ed.portals}
                         zones={ed.zones}
                         selectedZone={ed.selectedZone}
@@ -133,7 +131,6 @@ export default function RoomEdit() {
                         onSelect={ed.setSelectedProp}
                         onRemove={ed.removeProp}
                     />
-                    <ObjectsPanel objects={ed.objects} spawn={ed.spawn} width={ed.width} height={ed.height} onChange={ed.setObjects} />
                     <PortalsPanel
                         portals={ed.portals}
                         rooms={rooms}

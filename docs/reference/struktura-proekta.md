@@ -25,7 +25,7 @@ realtime на Laravel Reverb. Ниже — назначение ключевых
 
 | Файл             | Назначение                                                                                                                                      |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `map.ts`         | `makeMap(data)` → `GameMap`: тайлы, коллизии, зоны, `canHear`, `isSpotlight`, порталы, объекты; `resizeRows`/`setTile`/`fillRect` для редактора |
+| `map.ts`         | `makeMap(data)` → `GameMap`: тайлы, коллизии, зоны, `canHear`, `isSpotlight`, порталы, предметы; `resizeRows`/`setTile`/`fillRect` для редактора |
 | `scene.ts`       | `OfficeScene` — рендер на PixiJS: камера, чанки карты, аватары, реакции, порталы                                                                |
 | `camera.ts`      | `cameraOffset` (следование за игроком + кламп), `visibleChunkRange`, `approach`                                                                 |
 | `avatar.ts`      | сборка аватара из слоёв LPC; `lookFromConfig`, `lookFor`                                                                                        |

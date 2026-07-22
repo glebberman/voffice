@@ -9,7 +9,6 @@ const mapWith = (doors: DoorData[]): MapData => ({
     rows,
     spawn: { x: 1, y: 1 },
     zones: [],
-    objects: [],
     portals: [],
     doors,
 });

@@ -67,7 +67,7 @@ class MapUpdateRequest extends FormRequest
     }
 
     /**
-     * Список из карты (objects, portals, doors, props) — всегда массив.
+     * Список из карты (portals, doors, props) — всегда массив.
      *
      * @return list<mixed>
      */
@@ -122,13 +122,6 @@ class MapUpdateRequest extends FormRequest
             'map.zones.*.y2' => ['required', 'integer', 'min:0'],
             'map.zones.*.isPrivate' => ['sometimes', 'boolean'],
             'map.zones.*.kind' => ['sometimes', 'string', 'max:32'],
-            'map.objects' => ['present', 'array'],
-            'map.objects.*.id' => ['required', 'string', 'max:64'],
-            'map.objects.*.type' => ['required', 'string', 'in:board,video,map,link'],
-            'map.objects.*.label' => ['required', 'string', 'max:80'],
-            'map.objects.*.url' => ['required', 'url', 'max:500'],
-            'map.objects.*.x' => ['required', 'integer', 'min:0'],
-            'map.objects.*.y' => ['required', 'integer', 'min:0'],
             // предметы обстановки: тип берётся из каталога resources/props.json,
             // размеры оттуда же — в карте хранится только тип и позиция
             'map.props' => ['sometimes', 'array', 'max:2000'],
@@ -202,13 +195,6 @@ class MapUpdateRequest extends FormRequest
                         $validator->errors()->add("map.zones.{$i}", 'Зона за пределами карты');
                     } elseif ($x2 < $x1 || $y2 < $y1) {
                         $validator->errors()->add("map.zones.{$i}", 'У зоны правый-нижний угол левее/выше левого-верхнего');
-                    }
-                }
-
-                foreach ($this->mapList('objects') as $i => $obj) {
-                    [$x, $y] = self::pointOf($obj);
-                    if (! $inBounds($x, $y)) {
-                        $validator->errors()->add("map.objects.{$i}", 'Объект за пределами карты');
                     }
                 }
 
