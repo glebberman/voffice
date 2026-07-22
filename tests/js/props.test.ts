@@ -252,12 +252,12 @@ describe('зона взаимодействия', () => {
     it('клетки зоны в каталоге валидны: в радиусе, без дублей, не на основании', () => {
         for (const type of PROP_TYPES) {
             for (const orientation of Object.values(spec(type).orientations)) {
-                const cells = orientation?.interaction ?? [];
+                const cells = orientation.interaction ?? [];
                 const seen = new Set<string>();
                 for (const c of cells) {
                     expect(Math.abs(c.dx), `${type} dx`).toBeLessThanOrEqual(8);
                     expect(Math.abs(c.dy), `${type} dy`).toBeLessThanOrEqual(8);
-                    const onBase = orientation && c.dx >= 0 && c.dx < orientation.w && c.dy >= 0 && c.dy < orientation.h;
+                    const onBase = c.dx >= 0 && c.dx < orientation.w && c.dy >= 0 && c.dy < orientation.h;
                     expect(onBase, `${type} клетка на основании`).toBe(false);
                     const key = `${c.dx},${c.dy}`;
                     expect(seen.has(key), `${type} дубль клетки`).toBe(false);
