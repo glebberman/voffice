@@ -1,5 +1,13 @@
 import type { EditorCanvasHandle, Tile } from '@/components/editor/EditorCanvas';
-import { blockedByProps, footprintCells, hasAccess, propZoneCells, reachableFromSpawn, zoneAvailability } from '@/editor/availability';
+import {
+    blockedByProps,
+    footprintCells,
+    hasAccess,
+    propZoneCells,
+    reachableFromSpawn,
+    reachableWithout,
+    zoneAvailability,
+} from '@/editor/availability';
 import { zonePreset } from '@/editor/zone-presets';
 import type { PropGhostView, PropSelectionView, RectPreview } from '@/game/editor-scene';
 import {
@@ -505,11 +513,26 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [zoneKey, catalogue, zoneWidth]);
 
+    // Достижимость с учётом будущего места предмета. Второй обход нужен, только
+    // если это место вообще попадает на достижимые клетки: у выделенного (а не
+    // переносимого) предмета основание уже учтено в blocked, и связность
+    // измениться не может.
+    const afterPlacing = useMemo(() => {
+        let touches = false;
+        for (const cell of futureFootprint) {
+            if (reachable.has(cell)) {
+                touches = true;
+                break;
+            }
+        }
+        return touches ? reachableWithout(reachable, futureFootprint, zoneWidth, spawn) : reachable;
+    }, [reachable, futureFootprint, zoneWidth, spawn]);
+
     const interactionZone = useMemo(() => {
         const cells = zoneOf ? propZoneCells(catalogue, zoneOf) : [];
-        return cells.length > 0 ? zoneAvailability(cells, reachable, zoneWidth, zoneHeight, spawn, futureFootprint) : null;
+        return cells.length > 0 ? zoneAvailability(cells, afterPlacing, zoneWidth, zoneHeight) : null;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [zoneKey, catalogue, reachable, zoneWidth, zoneHeight, spawn, futureFootprint]);
+    }, [zoneKey, catalogue, afterPlacing, zoneWidth, zoneHeight]);
 
     // значок «недоступен» у функциональных предметов, к которым не подойти
     const unavailableMarks = useMemo(
@@ -520,13 +543,12 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
                 if (!spec?.behavior || !orientation) {
                     return [];
                 }
-                const zone = zoneAvailability(propZoneCells(catalogue, prop), reachable, zoneWidth, zoneHeight, spawn, futureFootprint);
-                if (hasAccess(zone)) {
+                if (hasAccess(zoneAvailability(propZoneCells(catalogue, prop), afterPlacing, zoneWidth, zoneHeight))) {
                     return [];
                 }
                 return [{ x: prop.x + orientation.w / 2, y: prop.y + orientation.h / 2 }]; // середина основания
             }),
-        [catalogue, props, reachable, zoneWidth, zoneHeight, spawn, futureFootprint],
+        [catalogue, props, afterPlacing, zoneWidth, zoneHeight],
     );
 
     return {

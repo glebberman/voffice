@@ -365,7 +365,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
         /** Здоровается новая вкладка — остальные вкладки этого юзера замолкают. */
         const helloFromThisTab = () => {
             helloAtRef.current = Date.now();
-            channel.whisper('hello', { id: userRef.current.id, tab: tabIdRef.current } satisfies TabHello);
+            channel.whisper('hello', { id: userRef.current.id, tab: tabIdRef.current, at: helloAtRef.current } satisfies TabHello);
         };
 
         const yieldControl = () => {
@@ -687,7 +687,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             })
             // другая вкладка этого же пользователя взяла управление
             .listenForWhisper('hello', (p: TabHello) => {
-                if (shouldYieldTo(p, userRef.current.id, tabIdRef.current, Date.now() - helloAtRef.current)) {
+                if (shouldYieldTo(p, userRef.current.id, tabIdRef.current, helloAtRef.current)) {
                     yieldControl();
                 }
             })

@@ -1,4 +1,12 @@
-import { blockedByProps, footprintCells, hasAccess, propZoneCells, reachableFromSpawn, zoneAvailability } from '@/editor/availability';
+import {
+    blockedByProps,
+    footprintCells,
+    hasAccess,
+    propZoneCells,
+    reachableFromSpawn,
+    reachableWithout,
+    zoneAvailability,
+} from '@/editor/availability';
 import type { PropData } from '@/game/map';
 import type { PropCatalogue } from '@/game/props';
 import { describe, expect, it } from 'vitest';
@@ -84,7 +92,7 @@ describe('вердикт по зоне предмета', () => {
         const stool = prop('s1', 'stool', 2, 1);
         const blocked = blockedByProps(CATALOGUE, [stool], 5);
         const reachable = reachableFromSpawn(corridor, blocked, { x: 1, y: 1 });
-        const zone = zoneAvailability(propZoneCells(CATALOGUE, stool), reachable, 5, corridor.length, spawn);
+        const zone = zoneAvailability(propZoneCells(CATALOGUE, stool), reachable, 5, corridor.length);
 
         expect(zone).toEqual([{ x: 2, y: 2, ok: true }]);
         expect(hasAccess(zone)).toBe(true);
@@ -95,7 +103,7 @@ describe('вердикт по зоне предмета', () => {
         const walled = ['#####', '#...#', '#####', '#...#', '#####'];
         const stool = prop('s1', 'stool', 2, 3); // зона — (2,4), это стена
         const reachable = reachableFromSpawn(walled, blockedByProps(CATALOGUE, [stool], 5), { x: 1, y: 1 });
-        const zone = zoneAvailability(propZoneCells(CATALOGUE, stool), reachable, 5, walled.length, spawn);
+        const zone = zoneAvailability(propZoneCells(CATALOGUE, stool), reachable, 5, walled.length);
 
         expect(zone).toEqual([{ x: 2, y: 4, ok: false }]);
         expect(hasAccess(zone)).toBe(false);
@@ -107,10 +115,10 @@ describe('вердикт по зоне предмета', () => {
 
         // предмет у левого края: (-1,1) по индексу — это (2,0), и она достижима
         expect(reachable.has(1 * 3 - 1)).toBe(true);
-        expect(zoneAvailability([{ x: -1, y: 1 }], reachable, 3, 3, { x: 0, y: 0 })).toEqual([{ x: -1, y: 1, ok: false }]);
+        expect(zoneAvailability([{ x: -1, y: 1 }], reachable, 3, 3)).toEqual([{ x: -1, y: 1, ok: false }]);
         // у правого края (типичная зона dx:+1): (3,1) по индексу — это (0,2)
         expect(reachable.has(1 * 3 + 3)).toBe(true);
-        expect(zoneAvailability([{ x: 3, y: 1 }], reachable, 3, 3, { x: 0, y: 0 })).toEqual([{ x: 3, y: 1, ok: false }]);
+        expect(zoneAvailability([{ x: 3, y: 1 }], reachable, 3, 3)).toEqual([{ x: 3, y: 1, ok: false }]);
     });
 
     it('предмет, встав на место, может сам отрезать свою зону', () => {
@@ -121,9 +129,11 @@ describe('вердикт по зоне предмета', () => {
         const ghost = { type: 'post', x: 2, y: 1 };
         const future = new Set(footprintCells(CATALOGUE, ghost).map((c) => c.y * 5 + c.x));
 
-        expect(zoneAvailability(propZoneCells(CATALOGUE, ghost), reachable, 5, narrow.length, spawn, future)).toEqual([{ x: 3, y: 1, ok: false }]);
+        const after = reachableWithout(reachable, future, 5, spawn);
+
+        expect(zoneAvailability(propZoneCells(CATALOGUE, ghost), after, 5, narrow.length)).toEqual([{ x: 3, y: 1, ok: false }]);
         // без учёта будущего основания та же клетка выглядела бы доступной
-        expect(zoneAvailability(propZoneCells(CATALOGUE, ghost), reachable, 5, narrow.length, spawn)).toEqual([{ x: 3, y: 1, ok: true }]);
+        expect(zoneAvailability(propZoneCells(CATALOGUE, ghost), reachable, 5, narrow.length)).toEqual([{ x: 3, y: 1, ok: true }]);
     });
 
     it('предмет без зоны недоступен по определению', () => {

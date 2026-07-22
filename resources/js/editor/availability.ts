@@ -101,35 +101,28 @@ export function reachableFromSpawn(rows: string[], blocked: ReadonlySet<number>,
 }
 
 /**
- * Ведёт ли из клетки путь к спавну, если из уже посчитанной достижимости
- * выкинуть `removed` — основание, которое предмет займёт, встав сюда.
+ * Достижимость после того, как предмет займёт клетки `removed`.
  *
- * Полный обход карты ради этого не нужен: идём только по достижимым клеткам и
- * обрываемся, как только дошли до спавна. На практике это десятки клеток, а не
- * вся карта, поэтому вердикт можно пересчитывать хоть на каждый тайл под
- * курсором.
+ * Обход идёт только по уже достижимым клеткам, поэтому он заметно дешевле
+ * полного: стены, чужие основания и всё отрезанное в него не попадают, а
+ * проверка — это поиск в множестве, а не разбор символа тайла. Считается один
+ * раз на положение предмета и переиспользуется всеми клетками зоны и всеми
+ * значками «недоступен».
  */
-export function stillReachable(
-    from: { x: number; y: number },
+export function reachableWithout(
     reachable: ReadonlySet<number>,
     removed: ReadonlySet<number>,
     width: number,
     spawn: { x: number; y: number },
-): boolean {
-    const start = from.y * width + from.x;
-    const goal = spawn.y * width + spawn.x;
-    if (removed.size === 0) {
-        return true; // ничего не убрали — связность прежняя
-    }
-    if (removed.has(start) || removed.has(goal)) {
-        return false; // встать некуда либо спавн замурован тем же предметом
-    }
-    if (start === goal) {
-        return true;
+): Set<number> {
+    const seen = new Set<number>();
+    const start = spawn.y * width + spawn.x;
+    if (!reachable.has(start) || removed.has(start)) {
+        return seen; // спавн замуровали тем же предметом — дойти неоткуда
     }
 
-    const seen = new Set([start]);
     const queue = [start];
+    seen.add(start);
     let head = 0;
     while (head < queue.length) {
         const cell = queue[head++];
@@ -147,9 +140,6 @@ export function stillReachable(
                 continue;
             }
             const next = ny * width + nx;
-            if (next === goal) {
-                return true;
-            }
             if (!seen.has(next) && reachable.has(next) && !removed.has(next)) {
                 seen.add(next);
                 queue.push(next);
@@ -157,7 +147,7 @@ export function stillReachable(
         }
     }
 
-    return false;
+    return seen;
 }
 
 /**
@@ -167,29 +157,11 @@ export function stillReachable(
  * предмета на правом краю попала бы на начало следующей строки. Границы по y
  * при этом дают индекс заведомо вне множества, но проверяются наравне с x:
  * условие целиком читается, а не выводится из свойств нумерации.
- *
- * `removed` — клетки, которые займёт предмет, встав на своё место: они не
- * учтены в `reachable` (тот считается один раз, без предмета на курсоре), и их
- * влияние проверяется локально.
  */
-export function zoneAvailability(
-    cells: { x: number; y: number }[],
-    reachable: ReadonlySet<number>,
-    width: number,
-    height: number,
-    spawn: { x: number; y: number },
-    removed: ReadonlySet<number> = new Set(),
-): ZoneCell[] {
+export function zoneAvailability(cells: { x: number; y: number }[], reachable: ReadonlySet<number>, width: number, height: number): ZoneCell[] {
     return cells.map((cell) => ({
         ...cell,
-        ok:
-            cell.x >= 0 &&
-            cell.y >= 0 &&
-            cell.x < width &&
-            cell.y < height &&
-            reachable.has(cell.y * width + cell.x) &&
-            !removed.has(cell.y * width + cell.x) &&
-            stillReachable(cell, reachable, removed, width, spawn),
+        ok: cell.x >= 0 && cell.y >= 0 && cell.x < width && cell.y < height && reachable.has(cell.y * width + cell.x),
     }));
 }
 
