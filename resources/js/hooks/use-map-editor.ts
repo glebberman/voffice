@@ -1,4 +1,5 @@
 import type { EditorCanvasHandle, Tile } from '@/components/editor/EditorCanvas';
+import { blockedByProps, footprintCells, hasAccess, propZoneCells, reachableFromSpawn, zoneAvailability } from '@/editor/availability';
 import { zonePreset } from '@/editor/zone-presets';
 import type { PropGhostView, PropSelectionView, RectPreview } from '@/game/editor-scene';
 import {
@@ -16,7 +17,7 @@ import {
 } from '@/game/map';
 import { nextPropDir, propAt, propDirs, propFits, propOrientation, propSpec, type PropCatalogue, type PropDir } from '@/game/props';
 import { router } from '@inertiajs/react';
-import { useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
 export type Tool = 'paint' | 'rect' | 'spawn' | 'pan' | 'select' | 'door' | 'zone';
 
@@ -31,6 +32,9 @@ interface RoomInfo {
     name: string;
     map: MapData;
 }
+
+/** Пустой результат обхода — когда подсвечивать нечего, BFS не запускаем вовсе. */
+const NOTHING_REACHABLE: ReadonlySet<number> = new Set<number>();
 
 function isTyping(target: EventTarget | null): boolean {
     return target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
@@ -58,7 +62,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     const [dragTarget, setDragTarget] = useState<Tile | null>(null); // куда ведут переносимый предмет
     const [tool, setToolState] = useState<Tool>('paint');
     const [brush, setBrush] = useState<string>('.');
-    const [hover, setHover] = useState<Tile | null>(null);
+    const [hover, setHoverState] = useState<Tile | null>(null);
     const [rectPreview, setRectPreview] = useState<RectPreview | null>(null);
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState<string[]>([]);
@@ -81,6 +85,12 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     selectedRef.current = selectedProp;
     const propsRef = useRef(props);
     propsRef.current = props;
+
+    // Тайл под курсором меняется редко, а pointermove сыплется на каждый пиксель:
+    // без этой отсечки редактор перерисовывался бы всё движение мыши подряд.
+    const setHover = (tile: Tile | null) => {
+        setHoverState((prev) => (prev?.x === tile?.x && prev?.y === tile?.y ? prev : tile));
+    };
 
     const width = rows[0]?.length ?? 0;
     const height = rows.length;
@@ -393,6 +403,76 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         }
     }
 
+    // --- доступность зоны взаимодействия (правила — в editor/availability.ts) ---
+    // Чью зону показываем: предмет на курсоре → переносимый → выделенный.
+    // Призрак, который не влезает, зону не рисует: он и так красный, а зелёная
+    // зона рядом с ним противоречила бы сама себе.
+    const zoneOf =
+        propGhost && !propGhost.valid
+            ? null
+            : placing && hover
+              ? { type: placing.type, dir: placing.dir, x: hover.x, y: hover.y }
+              : dragTarget && move && move.index < props.length
+                ? { type: props[move.index].type, dir: props[move.index].dir, x: dragTarget.x, y: dragTarget.y }
+                : selectedProp !== null && selectedProp < props.length
+                  ? props[selectedProp]
+                  : null;
+    // слепок активного предмета: zoneOf пересобирается каждый рендер, а мемо
+    // должны держаться за то, что реально изменилось
+    const zoneKey = zoneOf ? `${zoneOf.type}:${zoneOf.dir ?? 'south'}:${zoneOf.x}:${zoneOf.y}` : '';
+
+    // Обход идёт по всей карте (на 512×512 это десятки миллисекунд), поэтому
+    // берём отложенные строки: кисть рисует по тайлу за раз и не должна
+    // спотыкаться о пересчёт подсветки. Размеры — тоже от этих строк: после
+    // ресайза rows уже новые, а deferredRows ещё старые, и индексы y*w+x
+    // разъехались бы между обходом и вердиктом.
+    const deferredRows = useDeferredValue(rows);
+    const zoneWidth = deferredRows[0]?.length ?? 0;
+    const zoneHeight = deferredRows.length;
+
+    // Прежнее место переносимого предмета ему же не мешает, а вот будущее —
+    // перекрывает проход: иначе зона светилась бы зелёным ровно там, где
+    // предмет сам себя и отрежет.
+    const draggingId = dragTarget && move && move.index < props.length ? props[move.index].id : undefined;
+    const blocked = useMemo(() => {
+        const set = blockedByProps(catalogue, props, zoneWidth, draggingId);
+        for (const cell of zoneOf ? footprintCells(catalogue, zoneOf) : []) {
+            set.add(cell.y * zoneWidth + cell.x);
+        }
+        return set;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [catalogue, props, zoneWidth, draggingId, zoneKey]);
+
+    // считать нечего, если ни одного функционального предмета и никого не ведут
+    const hasFunctional = useMemo(() => props.some((p) => propSpec(catalogue, p.type)?.behavior != null), [props, catalogue]);
+    const reachable = useMemo(
+        () => (hasFunctional || zoneKey !== '' ? reachableFromSpawn(deferredRows, blocked, spawn) : NOTHING_REACHABLE),
+        [hasFunctional, zoneKey, deferredRows, blocked, spawn],
+    );
+
+    const interactionZone = useMemo(() => {
+        const cells = zoneOf ? propZoneCells(catalogue, zoneOf) : [];
+        return cells.length > 0 ? zoneAvailability(cells, reachable, zoneWidth, zoneHeight) : null;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [zoneKey, catalogue, reachable, zoneWidth, zoneHeight]);
+
+    // значок «недоступен» у функциональных предметов, к которым не подойти
+    const unavailableMarks = useMemo(
+        () =>
+            props.flatMap((prop) => {
+                const spec = propSpec(catalogue, prop.type);
+                const orientation = spec ? propOrientation(spec, prop.dir) : null;
+                if (!spec?.behavior || !orientation) {
+                    return [];
+                }
+                if (hasAccess(zoneAvailability(propZoneCells(catalogue, prop), reachable, zoneWidth, zoneHeight))) {
+                    return [];
+                }
+                return [{ x: prop.x + orientation.w / 2, y: prop.y + orientation.h / 2 }]; // середина основания
+            }),
+        [catalogue, props, reachable, zoneWidth, zoneHeight],
+    );
+
     return {
         // мета и данные
         name,
@@ -431,6 +511,8 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         removeProp,
         propGhost,
         propSelection,
+        interactionZone,
+        unavailableMarks,
         // поле
         hover,
         setHover,

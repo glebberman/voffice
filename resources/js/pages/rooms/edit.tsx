@@ -62,6 +62,8 @@ export default function RoomEdit() {
                         rectPreview={ed.rectPreview}
                         propGhost={ed.propGhost}
                         propSelection={ed.propSelection}
+                        interactionZone={ed.interactionZone}
+                        unavailableMarks={ed.unavailableMarks}
                         panTool={ed.tool === 'pan'}
                         onTileDown={ed.onTileDown}
                         onTileDrag={ed.onTileDrag}

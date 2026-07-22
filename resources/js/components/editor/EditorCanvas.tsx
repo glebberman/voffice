@@ -1,3 +1,4 @@
+import type { ZoneCell } from '@/editor/availability';
 import { EditorScene, type PropGhostView, type PropSelectionView, type RectPreview } from '@/game/editor-scene';
 import type { DoorData, MapObjectData, PortalData, PropData, Zone } from '@/game/map';
 import type { PropCatalogue } from '@/game/props';
@@ -30,6 +31,9 @@ interface EditorCanvasProps {
     rectPreview: RectPreview | null;
     propGhost: PropGhostView | null;
     propSelection: PropSelectionView | null;
+    // зона взаимодействия активного предмета и значки «недоступен»
+    interactionZone: ZoneCell[] | null;
+    unavailableMarks: { x: number; y: number }[];
     panTool: boolean; // активен инструмент «рука»
     onTileDown: (tile: Tile) => void;
     onTileDrag: (tile: Tile) => void;
@@ -60,6 +64,8 @@ export function EditorCanvas({
     rectPreview,
     propGhost,
     propSelection,
+    interactionZone,
+    unavailableMarks,
     panTool,
     onTileDown,
     onTileDrag,
@@ -108,6 +114,8 @@ export function EditorCanvas({
     useEffect(() => sceneRef.current?.setRectPreview(rectPreview), [rectPreview]);
     useEffect(() => sceneRef.current?.setPropGhost(propGhost), [propGhost]);
     useEffect(() => sceneRef.current?.setPropSelection(propSelection), [propSelection]);
+    useEffect(() => sceneRef.current?.setInteractionZone(interactionZone), [interactionZone]);
+    useEffect(() => sceneRef.current?.setUnavailableMarks(unavailableMarks), [unavailableMarks]);
 
     // зум колесом — нативный слушатель: React onWheel пассивен, preventDefault не сработал бы
     useEffect(() => {

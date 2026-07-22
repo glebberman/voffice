@@ -1,3 +1,4 @@
+import type { ZoneCell } from '@/editor/availability';
 import { clampOffset, EDITOR_ZOOM_DEFAULT, EDITOR_ZOOMS, screenToTile, zoomToCursor } from '@/editor/viewport';
 import { zonePreset } from '@/editor/zone-presets';
 import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
@@ -64,8 +65,10 @@ export class EditorScene {
     private doorLayer = new Container();
     private markerLayer = new Container(); // спавн, порталы, объекты
     private zoneLayer = new Container(); // оверлей областей поверх всего, кроме курсора
+    private interactionZoneG = new Graphics(); // зона взаимодействия: зелёные/красные клетки
     private selectG = new Graphics(); // рамка выделенного предмета
     private ghostG = new Graphics(); // предмет-призрак при расстановке/переносе
+    private unavailableG = new Graphics(); // значки «недоступен» у отрезанных предметов
     private hoverG = new Graphics();
     private rectG = new Graphics();
 
@@ -73,6 +76,8 @@ export class EditorScene {
     private selectedZone: number | null = null;
     private propGhost: PropGhostView | null = null;
     private propSelection: PropSelectionView | null = null;
+    private interactionZone: ZoneCell[] | null = null;
+    private unavailableMarks: { x: number; y: number }[] = [];
 
     private rows: string[];
     private width: number;
@@ -138,8 +143,10 @@ export class EditorScene {
             this.doorLayer,
             this.markerLayer,
             this.zoneLayer,
+            this.interactionZoneG,
             this.selectG,
             this.ghostG,
+            this.unavailableG,
             this.hoverG,
             this.rectG,
         );
@@ -309,6 +316,18 @@ export class EditorScene {
         this.drawSelection();
     }
 
+    /** Зона взаимодействия активного предмета: куда можно встать — зелёным, куда нет — красным. */
+    setInteractionZone(cells: ZoneCell[] | null): void {
+        this.interactionZone = cells;
+        this.drawInteractionZone();
+    }
+
+    /** Центры (в тайлах) предметов, к которым не подойти. */
+    setUnavailableMarks(marks: { x: number; y: number }[]): void {
+        this.unavailableMarks = marks;
+        this.drawUnavailable();
+    }
+
     setHover(tile: Point | null): void {
         this.hoverTile = tile;
         this.drawHover();
@@ -355,8 +374,10 @@ export class EditorScene {
         this.applyView();
         this.updateChunks(); // содержимое чанков от масштаба не зависит — только их набор
         this.drawZones();
+        this.drawInteractionZone();
         this.drawSelection();
         this.drawGhost();
+        this.drawUnavailable();
         this.drawHover();
         this.drawRect();
     }
@@ -523,6 +544,40 @@ export class EditorScene {
             .rect(g.x * TILE, g.y * TILE, g.w * TILE, g.h * TILE)
             .fill({ color, alpha: 0.3 })
             .stroke({ width: 2 / this.scale, color });
+    }
+
+    private drawInteractionZone(): void {
+        this.interactionZoneG.clear();
+        for (const cell of this.interactionZone ?? []) {
+            // светло-зелёная — есть куда встать, красная — до клетки не дойти
+            const color = cell.ok ? 0x86efac : 0xf87171;
+            this.interactionZoneG
+                .rect(cell.x * TILE, cell.y * TILE, TILE, TILE)
+                .fill({ color, alpha: 0.42 })
+                .stroke({ width: 1.5 / this.scale, color, alpha: 0.95 });
+        }
+    }
+
+    /**
+     * Перечёркнутый красный кружок над предметом, к которому не подойти.
+     * Размер держим в экранных пикселях (делим на масштаб): это значок-предупреждение,
+     * его должно быть видно на любом зуме.
+     */
+    private drawUnavailable(): void {
+        this.unavailableG.clear();
+        const r = 9 / this.scale;
+        const d = r * 0.7; // конец диагонали внутри окружности
+        for (const mark of this.unavailableMarks) {
+            const cx = mark.x * TILE;
+            const cy = mark.y * TILE;
+            this.unavailableG
+                .circle(cx, cy, r)
+                .fill({ color: 0x7f1d1d, alpha: 0.55 })
+                .stroke({ width: 2 / this.scale, color: 0xf87171 })
+                .moveTo(cx - d, cy - d)
+                .lineTo(cx + d, cy + d)
+                .stroke({ width: 2 / this.scale, color: 0xf87171 });
+        }
     }
 
     private drawSelection(): void {
