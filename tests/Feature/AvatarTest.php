@@ -84,7 +84,13 @@ class AvatarTest extends TestCase
             }
         }
         foreach ($wardrobe['hairs'] as $hair) {
-            $paths[] = "hair/{$hair}/adult/walk.png";
+            // у двухслойных причёсок walk лежит в подпапках bg/ и fg/, а не файлом
+            if (in_array($hair, $wardrobe['layeredHairs'], true)) {
+                $paths[] = "hair/{$hair}/adult/bg/walk.png";
+                $paths[] = "hair/{$hair}/adult/fg/walk.png";
+            } else {
+                $paths[] = "hair/{$hair}/adult/walk.png";
+            }
         }
 
         foreach ($paths as $path) {

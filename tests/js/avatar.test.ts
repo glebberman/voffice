@@ -16,8 +16,8 @@ describe('lookFor (детерминированный образ по id)', () =
         const layers = lookFor(1);
         expect(layers.length).toBeGreaterThanOrEqual(7);
         expect(layers[0]).toContain('body/bodies/');
-        expect(layers[1]).toContain('head/heads/');
-        expect(layers.at(-1)).toMatch(/^hair\/[a-z_]+\/adult\/walk\.png$/);
+        // верхний слой причёски: одинарный walk.png или передний fg/walk.png
+        expect(layers.at(-1)).toMatch(/^hair\/[a-z_]+\/adult\/(fg\/)?walk\.png$/);
     });
 
     it('регресс «лысой Ани»: каждый слой каждого образа существует на диске', () => {
@@ -68,10 +68,28 @@ describe('lookFromConfig (сохранённый образ)', () => {
             }
         }
         for (const hair of WARDROBE.hairs) {
-            if (!existsSync(`${SPRITES_DIR}/hair/${hair}/adult/walk.png`)) {
-                missing.add(hair);
+            // у двухслойных причёсок walk лежит в bg/ и fg/, а не файлом
+            const paths = WARDROBE.layeredHairs.includes(hair)
+                ? [`hair/${hair}/adult/bg/walk.png`, `hair/${hair}/adult/fg/walk.png`]
+                : [`hair/${hair}/adult/walk.png`];
+            for (const path of paths) {
+                if (!existsSync(`${SPRITES_DIR}/${path}`)) {
+                    missing.add(path);
+                }
             }
         }
         expect([...missing]).toEqual([]);
+    });
+
+    it('двухслойная причёска: задний слой за головой, передний поверх', () => {
+        const layered = WARDROBE.layeredHairs[0];
+        const layers = lookFromConfig({ body: 'male', hair: layered, top: 'formal', legs: 'formal' });
+        expect(layers).not.toBeNull();
+
+        const back = layers?.indexOf(`hair/${layered}/adult/bg/walk.png`) ?? -1;
+        const head = layers?.findIndex((l) => l.includes('head/heads/')) ?? -1;
+        expect(back).toBeGreaterThanOrEqual(0);
+        expect(back).toBeLessThan(head); // задний слой — до головы
+        expect(layers?.at(-1)).toBe(`hair/${layered}/adult/fg/walk.png`); // передний — поверх всего
     });
 });

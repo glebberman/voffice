@@ -21,6 +21,11 @@ const HAIR_LABELS: Record<string, string> = {
     shorthawk: 'Ирокез',
     spiked: 'Торчком',
     swoop: 'Волна',
+    braid: 'Коса',
+    bunches: 'Два хвостика',
+    high_ponytail: 'Высокий хвост',
+    ponytail: 'Хвост',
+    wavy: 'Волнистые',
 };
 
 interface AvatarEditorProps {

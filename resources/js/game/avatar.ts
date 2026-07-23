@@ -31,6 +31,10 @@ interface WardrobeBody {
 export interface Wardrobe {
     bodies: Record<string, WardrobeBody>;
     hairs: string[];
+    // причёски, у которых walk разбит на задний и передний слой (коса, хвост):
+    // задний уходит за голову, передний рисуется поверх. Их walk лежит не
+    // файлом, а в подпапках bg/ и fg/.
+    layeredHairs: string[];
     eyes: string;
 }
 
@@ -46,6 +50,8 @@ export interface AvatarConfig {
 }
 
 const hairPath = (style: string) => `hair/${style}/adult/walk.png`;
+const hairBackPath = (style: string) => `hair/${style}/adult/bg/walk.png`;
+const hairFrontPath = (style: string) => `hair/${style}/adult/fg/walk.png`;
 
 // детерминированный «рандом» по id: один и тот же пользователь всегда
 // выглядит одинаково у всех клиентов
@@ -57,11 +63,15 @@ function pick<T>(items: T[], id: number, salt: number): T {
 }
 
 function buildLayers(body: WardrobeBody, topPath: string, legsPath: string, hair: string, tie: boolean): string[] {
-    const layers = [body.body, body.head, WARDROBE.eyes, legsPath, body.feet, topPath];
+    const layered = WARDROBE.layeredHairs.includes(hair);
+    // z-порядок = порядок в массиве. Задний слой причёски идёт сразу за телом,
+    // перед головой — иначе коса/хвост лежали бы поверх лица.
+    const layers = layered ? [body.body, hairBackPath(hair)] : [body.body];
+    layers.push(body.head, WARDROBE.eyes, legsPath, body.feet, topPath);
     if (tie && body.tie) {
         layers.push(body.tie);
     }
-    layers.push(hairPath(hair));
+    layers.push(layered ? hairFrontPath(hair) : hairPath(hair));
     return layers;
 }
 

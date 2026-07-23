@@ -13,7 +13,7 @@ use RuntimeException;
  * давать внятную ошибку, а не расходиться по коду неизвестными значениями.
  *
  * @phpstan-type BodyShape array{label: string, body: string, head: string, feet: string, tie: string|false, tops: array<string, string>, legs: array<string, string>}
- * @phpstan-type WardrobeShape array{eyes: string, hairs: list<string>, bodies: array<string, BodyShape>}
+ * @phpstan-type WardrobeShape array{eyes: string, hairs: list<string>, layeredHairs: list<string>, bodies: array<string, BodyShape>}
  */
 class Wardrobe
 {
@@ -59,7 +59,15 @@ class Wardrobe
             $hairs[] = $hair;
         }
 
-        return ['eyes' => self::str($raw, 'eyes', 'корень'), 'hairs' => $hairs, 'bodies' => $bodies];
+        // причёски, у которых walk разбит на задний (bg) и передний (fg) слой
+        $layered = [];
+        foreach (is_array($raw['layeredHairs'] ?? null) ? $raw['layeredHairs'] : [] as $hair) {
+            if (is_string($hair)) {
+                $layered[] = $hair;
+            }
+        }
+
+        return ['eyes' => self::str($raw, 'eyes', 'корень'), 'hairs' => $hairs, 'layeredHairs' => $layered, 'bodies' => $bodies];
     }
 
     /**
