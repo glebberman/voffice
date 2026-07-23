@@ -106,7 +106,7 @@ export function nextPropDir(spec: PropSpec, dir: PropDir | undefined): PropDir {
         return dir ?? 'south';
     }
     const i = dirs.indexOf(dir ?? 'south');
-    return dirs[(i + 1) % dirs.length];
+    return dirs[(i + 1) % dirs.length] ?? 'south';
 }
 
 /**
@@ -121,6 +121,9 @@ export function propAt(
 ): number | null {
     for (let i = props.length - 1; i >= 0; i--) {
         const prop = props[i];
+        if (!prop) {
+            continue;
+        }
         const spec = propSpec(catalogue, prop.type);
         const orientation = spec ? propOrientation(spec, prop.dir) : null;
         if (orientation && x >= prop.x && x < prop.x + orientation.w && y >= prop.y && y < prop.y + orientation.h) {
@@ -157,7 +160,7 @@ export function nextPropState(orientation: PropOrientation, current: string | nu
     }
     const i = current != null ? names.indexOf(current) : -1;
 
-    return names[(i + 1) % names.length];
+    return names[(i + 1) % names.length] ?? null;
 }
 
 export function propSheetUrl(orientation: Pick<PropOrientation, 'sheet'>): string {

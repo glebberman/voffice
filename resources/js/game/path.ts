@@ -40,6 +40,10 @@ export function findStep(map: GameMap, from: { x: number; y: number }, target: {
         const cy = queueY[head];
         head++;
 
+        if (cx === undefined || cy === undefined) {
+            continue;
+        }
+
         if (++visited > MAX_VISITED) {
             return null;
         }

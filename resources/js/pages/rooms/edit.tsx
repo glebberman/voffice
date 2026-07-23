@@ -35,6 +35,11 @@ export default function RoomEdit() {
     const { room, rooms, propTypes, propCategories } = usePage<EditProps>().props;
     const ed = useMapEditor(room, propTypes);
 
+    // индексный доступ под noUncheckedIndexedAccess даёт T | undefined — считаем
+    // один раз и передаём готовые значения в JSX
+    const hoverChar = ed.hover ? (ed.rows[ed.hover.y]?.[ed.hover.x] ?? '') : '';
+    const selectedProp = ed.selectedProp !== null ? ed.props[ed.selectedProp] : undefined;
+
     return (
         <AppLayout
             breadcrumbs={[
@@ -73,9 +78,9 @@ export default function RoomEdit() {
                         <span>
                             Карта {ed.width}×{ed.height}
                         </span>
-                        {ed.hover && ed.rows[ed.hover.y]?.[ed.hover.x] && (
+                        {ed.hover && hoverChar && (
                             <span>
-                                ({ed.hover.x}, {ed.hover.y}) — {TILE_LABEL[ed.rows[ed.hover.y][ed.hover.x]] ?? ed.rows[ed.hover.y][ed.hover.x]}
+                                ({ed.hover.x}, {ed.hover.y}) — {TILE_LABEL[hoverChar] ?? hoverChar}
                             </span>
                         )}
                         <span className="ml-auto">Колесо — зум · пробел, средняя кнопка или «рука» — сдвиг</span>
@@ -85,9 +90,9 @@ export default function RoomEdit() {
                 <div className="flex w-full flex-col gap-3 overflow-y-auto lg:w-96">
                     <ToolBar tool={ed.tool} onTool={ed.setTool} editorRef={ed.editorRef} />
                     {/* панель настроек всплывает наверху, когда выделен предмет (при установке или клике) */}
-                    {ed.selectedProp !== null && ed.selectedProp < ed.props.length && (
+                    {ed.selectedProp !== null && selectedProp && (
                         <PropSettingsPanel
-                            prop={ed.props[ed.selectedProp]}
+                            prop={selectedProp}
                             index={ed.selectedProp}
                             catalogue={propTypes}
                             width={ed.width}

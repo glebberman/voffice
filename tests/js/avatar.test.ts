@@ -58,7 +58,7 @@ describe('lookFromConfig (сохранённый образ)', () => {
         for (const [bodyKey, body] of Object.entries(WARDROBE.bodies)) {
             for (const topKey of Object.keys(body.tops)) {
                 for (const legsKey of Object.keys(body.legs)) {
-                    const layers = lookFromConfig({ body: bodyKey, hair: WARDROBE.hairs[0], top: topKey, legs: legsKey, tie: true });
+                    const layers = lookFromConfig({ body: bodyKey, hair: WARDROBE.hairs[0] ?? '', top: topKey, legs: legsKey, tie: true });
                     for (const layer of layers ?? []) {
                         if (!existsSync(`${SPRITES_DIR}/${layer}`)) {
                             missing.add(layer);
@@ -82,7 +82,7 @@ describe('lookFromConfig (сохранённый образ)', () => {
     });
 
     it('двухслойная причёска: задний слой за головой, передний поверх', () => {
-        const layered = WARDROBE.layeredHairs[0];
+        const layered = WARDROBE.layeredHairs[0] ?? '';
         const layers = lookFromConfig({ body: 'male', hair: layered, top: 'formal', legs: 'formal' });
         expect(layers).not.toBeNull();
 

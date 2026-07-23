@@ -59,7 +59,11 @@ function pick<T>(items: T[], id: number, salt: number): T {
     let h = (id * 2654435761 + salt * 40503) >>> 0;
     h = (h ^ (h >> 15)) * 2246822519;
     h = (h ^ (h >> 13)) >>> 0;
-    return items[h % items.length];
+    const item = items[h % items.length];
+    if (item === undefined) {
+        throw new Error('pick: пустой список для выбора');
+    }
+    return item;
 }
 
 function buildLayers(body: WardrobeBody, topPath: string, legsPath: string, hair: string, tie: boolean): string[] {
@@ -107,13 +111,23 @@ export function lookFromConfig(cfg: AvatarConfig | null | undefined): string[] |
 // слои снизу вверх — фолбэк, пока пользователь не настроил образ
 export function lookFor(id: number): string[] {
     const bodyKeys = Object.keys(WARDROBE.bodies);
-    const body = WARDROBE.bodies[bodyKeys[Math.abs(id) % bodyKeys.length]];
+    const bodyKey = bodyKeys[Math.abs(id) % bodyKeys.length];
+    const body = bodyKey !== undefined ? WARDROBE.bodies[bodyKey] : undefined;
+    if (!body) {
+        throw new Error('lookFor: пустой гардероб (нет тел)');
+    }
     const topKey = pick(Object.keys(body.tops), id, 1);
     const legsKey = pick(Object.keys(body.legs), id, 2);
     const hair = pick(WARDROBE.hairs, id, 3);
     // галстук — только к «формальному» верху, через раз
     const tie = topKey === 'formal' && id % 2 === 0;
-    return buildLayers(body, body.tops[topKey].path, body.legs[legsKey].path, hair, tie);
+    // ключи взяты из самого словаря, но индексный доступ этого не знает
+    const top = body.tops[topKey];
+    const legs = body.legs[legsKey];
+    if (!top || !legs) {
+        throw new Error('lookFor: несогласованный гардероб');
+    }
+    return buildLayers(body, top.path, legs.path, hair, tie);
 }
 
 // Режет лист на сетку кадров walk-анимации [направление 0-3][кадр 0-8].

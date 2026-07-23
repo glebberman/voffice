@@ -13,6 +13,14 @@ const MAPS: Record<string, MapData> = {
     coworking: coworkingData as MapData,
 };
 
+function requireMap(slug: string): MapData {
+    const m = MAPS[slug];
+    if (!m) {
+        throw new Error(`нет карты ${slug}`);
+    }
+    return m;
+}
+
 // целостность каждой карты из resources/maps — того же JSON,
 // которым сидер наполняет таблицу rooms
 describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
@@ -58,6 +66,9 @@ describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
             expect(map.isWalkable(portal.x, portal.y), `портал ${portal.label}`).toBe(true);
             const target = MAPS[portal.to];
             expect(target, `карта ${portal.to} существует`).toBeDefined();
+            if (!target) {
+                continue;
+            }
             expect(makeMap(target, CATALOGUE).isWalkable(portal.tx, portal.ty), `прибытие ${portal.label}`).toBe(true);
         }
     });
@@ -84,7 +95,7 @@ describe.each(Object.entries(MAPS))('карта %s', (name, data) => {
 });
 
 describe('офисная карта: геометрия и правила', () => {
-    const map = makeMap(MAPS.office, CATALOGUE);
+    const map = makeMap(requireMap('office'), CATALOGUE);
 
     it('двери кухни и переговорки проходимы', () => {
         expect(map.isWalkable(13, 5)).toBe(true);

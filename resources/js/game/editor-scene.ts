@@ -106,7 +106,7 @@ export class EditorScene {
     }
 
     private get scale(): number {
-        return EDITOR_ZOOMS[this.zoomIndex];
+        return EDITOR_ZOOMS[this.zoomIndex] ?? 1;
     }
 
     async init(host: HTMLElement): Promise<void> {
@@ -210,8 +210,13 @@ export class EditorScene {
             }
             const a = prev[y];
             const b = next[y];
+            if (b === undefined) {
+                continue;
+            }
             for (let x = 0; x < b.length; x++) {
-                if (a[x] === b[x]) {
+                // a может быть undefined (новая строка после расширения) — тогда
+                // весь ряд считаем изменившимся
+                if (a?.[x] === b[x]) {
                     continue;
                 }
                 // тайл (x,y) влияет на верхушку своей строки (её рисует чанк
@@ -433,7 +438,7 @@ export class EditorScene {
         this.range = range;
 
         for (const [id, parts] of this.chunks) {
-            const [cx, cy] = id.split(':').map(Number);
+            const [cx = 0, cy = 0] = id.split(':').map(Number);
             if (!chunkRangeContains(range, cx, cy)) {
                 this.destroyChunk(parts);
                 this.chunks.delete(id);
@@ -472,7 +477,7 @@ export class EditorScene {
         }
         this.destroyChunk(old);
         this.chunks.delete(id);
-        const [cx, cy] = id.split(':').map(Number);
+        const [cx = 0, cy = 0] = id.split(':').map(Number);
         if (this.range && chunkRangeContains(this.range, cx, cy)) {
             this.chunks.set(id, this.buildChunk(cx, cy));
         }
@@ -499,7 +504,7 @@ export class EditorScene {
     }
 
     private tileAt(x: number, y: number): string {
-        return x < 0 || y < 0 || x >= this.width || y >= this.height ? '#' : this.rows[y][x];
+        return x < 0 || y < 0 || x >= this.width || y >= this.height ? '#' : (this.rows[y]?.[x] ?? '#');
     }
 
     private drawZones(): void {

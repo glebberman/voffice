@@ -619,6 +619,9 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
                 }
                 screenStreamRef.current = display;
                 const screenTrack = display.getVideoTracks()[0];
+                if (!screenTrack) {
+                    return; // поток без видеодорожки — показывать нечего
+                }
                 mesh.replaceVideoTrack(screenTrack);
                 setScreenOn(true);
                 // системная кнопка «Остановить показ» тоже возвращает камеру
@@ -894,7 +897,7 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             const id = target.prop.id;
             // сюда доходим только если состояния есть, поэтому запасной вариант
             // (первое имя) всегда существует — откатываться будет куда
-            const previous = propStatesRef.current[id] ?? target.spec.defaultState ?? propStateNames(orientation)[0];
+            const previous = propStatesRef.current[id] ?? target.spec.defaultState ?? propStateNames(orientation)[0] ?? '';
             const next = nextPropState(orientation, previous);
             if (next === null) {
                 return;

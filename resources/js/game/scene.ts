@@ -36,7 +36,7 @@ const SHADOW_ALPHA = 0.82;
 const AVATAR_COLORS = [0xe4572e, 0x17bebb, 0xffc914, 0x2e933c, 0x7768ae, 0xd1495b, 0x3b8ea5, 0xf26430];
 
 function avatarColor(id: number): number {
-    return AVATAR_COLORS[Math.abs(id) % AVATAR_COLORS.length];
+    return AVATAR_COLORS[Math.abs(id) % AVATAR_COLORS.length] ?? 0xffffff;
 }
 
 function centerOf(tileX: number, tileY: number): { x: number; y: number } {
@@ -245,12 +245,14 @@ export class OfficeScene {
                     let tallSprite: Sprite | null = null;
                     let ghostSprite: Sprite | null = null;
                     if (tall) {
-                        const [node, ghost] = [this.overheadLayer, this.overheadGhost].map((layer) => {
+                        const spawnTall = (layer: Container): Sprite => {
                             const sprite = new Sprite(tall);
                             sprite.position.set(prop.x * TILE, (prop.y - orientation.tall) * TILE);
                             layer.addChild(sprite);
                             return sprite;
-                        });
+                        };
+                        const node = spawnTall(this.overheadLayer);
+                        const ghost = spawnTall(this.overheadGhost);
                         tallSprite = node;
                         ghostSprite = ghost;
 
@@ -634,8 +636,13 @@ export class OfficeScene {
             sprite.charSprites = [];
             releaseAvatar(sprite.avatar); // прежний образ больше не нужен
             sprite.avatar = layers;
-            layers.forEach((_, i) => {
-                const s = new Sprite(layers[i][DIR_ROW[sprite.dir]][Math.min(sprite.frame, layers[i][0].length - 1)]);
+            layers.forEach((layer, i) => {
+                const row = layer[DIR_ROW[sprite.dir]];
+                const first = layer[0];
+                if (!row || !first) {
+                    return;
+                }
+                const s = new Sprite(row[Math.min(sprite.frame, first.length - 1)]);
                 s.anchor.set(0.5, 1);
                 s.position.set(0, FEET_Y);
                 sprite.charSprites.push(s);
@@ -898,8 +905,11 @@ export class OfficeScene {
         }
         const row = DIR_ROW[sprite.dir];
         sprite.charSprites.forEach((s, i) => {
-            const frames = avatar[i][row];
-            s.texture = frames[Math.min(sprite.frame, frames.length - 1)];
+            const frames = avatar[i]?.[row];
+            const texture = frames?.[Math.min(sprite.frame, frames.length - 1)];
+            if (texture) {
+                s.texture = texture;
+            }
         });
     }
 
@@ -919,7 +929,7 @@ export class OfficeScene {
         let added = false;
 
         for (const [id, parts] of this.chunks) {
-            const [cx, cy] = id.split(':').map(Number);
+            const [cx = 0, cy = 0] = id.split(':').map(Number);
             if (!chunkRangeContains(range, cx, cy)) {
                 parts.base.destroy();
                 this.dropOverheadPiece(parts.piece);

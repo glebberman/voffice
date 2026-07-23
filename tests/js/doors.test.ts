@@ -15,7 +15,7 @@ const mapWith = (doors: DoorData[]): MapData => ({
 
 const door = (lock: DoorData['lock'] = null): DoorData => ({ id: 'd1', x: 3, y: 3, lock });
 
-const cell = (x: number, y: number) => y * rows[0].length + x;
+const cell = (x: number, y: number) => y * (rows[0]?.length ?? 0) + x;
 
 describe('проходимость двери', () => {
     it('открытая дверь пропускает', () => {

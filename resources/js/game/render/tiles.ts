@@ -47,7 +47,7 @@ export function drawChunk(map: TileSource, cx: number, cy: number, skipCrown: Re
 
     for (let y = startY; y < endY; y++) {
         for (let x = startX; x < endX; x++) {
-            const ch = map.rows[y][x];
+            const ch = map.rows[y]?.[x] ?? '.';
             const px = x * TILE;
             const py = y * TILE;
 

@@ -40,13 +40,17 @@ function defaultConfig(initial: AvatarConfig | null): AvatarConfig {
         return initial;
     }
     const body = Object.keys(WARDROBE.bodies)[0];
-    return {
-        body,
-        hair: WARDROBE.hairs[0],
-        top: Object.keys(WARDROBE.bodies[body].tops)[0],
-        legs: Object.keys(WARDROBE.bodies[body].legs)[0],
-        tie: false,
-    };
+    const hair = WARDROBE.hairs[0];
+    const bodyCfg = body !== undefined ? WARDROBE.bodies[body] : undefined;
+    if (body === undefined || hair === undefined || !bodyCfg) {
+        throw new Error('гардероб пуст: нет тела или причёски');
+    }
+    const top = Object.keys(bodyCfg.tops)[0];
+    const legs = Object.keys(bodyCfg.legs)[0];
+    if (top === undefined || legs === undefined) {
+        throw new Error('гардероб пуст: у тела нет верха или низа');
+    }
+    return { body, hair, top, legs, tie: false };
 }
 
 export function AvatarEditor({ open, onOpenChange, initial, onSave }: AvatarEditorProps) {
@@ -58,11 +62,14 @@ export function AvatarEditor({ open, onOpenChange, initial, onSave }: AvatarEdit
     // при смене тела верх/низ переключаются на существующие ключи
     const setBody = (body: string) => {
         const next = WARDROBE.bodies[body];
+        if (!next) {
+            return;
+        }
         setCfg((prev) => ({
             body,
             hair: prev.hair,
-            top: prev.top in next.tops ? prev.top : Object.keys(next.tops)[0],
-            legs: prev.legs in next.legs ? prev.legs : Object.keys(next.legs)[0],
+            top: prev.top in next.tops ? prev.top : (Object.keys(next.tops)[0] ?? prev.top),
+            legs: prev.legs in next.legs ? prev.legs : (Object.keys(next.legs)[0] ?? prev.legs),
             tie: next.tie ? prev.tie : false,
         }));
     };
@@ -144,7 +151,7 @@ export function AvatarEditor({ open, onOpenChange, initial, onSave }: AvatarEdit
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {Object.entries(bodyConfig.tops).map(([key, item]) => (
+                                    {Object.entries(bodyConfig?.tops ?? {}).map(([key, item]) => (
                                         <SelectItem key={key} value={key}>
                                             {item.label}
                                         </SelectItem>
@@ -160,7 +167,7 @@ export function AvatarEditor({ open, onOpenChange, initial, onSave }: AvatarEdit
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {Object.entries(bodyConfig.legs).map(([key, item]) => (
+                                    {Object.entries(bodyConfig?.legs ?? {}).map(([key, item]) => (
                                         <SelectItem key={key} value={key}>
                                             {item.label}
                                         </SelectItem>
@@ -169,7 +176,7 @@ export function AvatarEditor({ open, onOpenChange, initial, onSave }: AvatarEdit
                             </Select>
                         </div>
 
-                        {bodyConfig.tie && (
+                        {bodyConfig?.tie && (
                             <label className="flex items-center gap-2 text-sm">
                                 <Checkbox checked={cfg.tie === true} onCheckedChange={(v) => setCfg((p) => ({ ...p, tie: v === true }))} />
                                 Галстук

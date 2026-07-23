@@ -41,6 +41,9 @@ export function ZonesPanel({
     // иначе оверлей рисуется наизнанку, а сервер такую зону не примет
     const setCorner = (i: number, key: 'x1' | 'y1' | 'x2' | 'y2', v: number) => {
         const z = zones[i];
+        if (!z) {
+            return;
+        }
         const next = { ...z, [key]: v };
         if (next.x2 < next.x1) {
             if (key === 'x1') next.x1 = next.x2;

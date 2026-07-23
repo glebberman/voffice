@@ -115,17 +115,21 @@ export function reachableFromSpawn(rows: string[], blocked: ReadonlySet<number>,
     const seen = new Set<number>();
 
     const open = (x: number, y: number): boolean =>
-        x >= 0 && y >= 0 && x < width && y < height && isWalkableChar(rows[y][x]) && !blocked.has(y * width + x);
+        x >= 0 && y >= 0 && x < width && y < height && isWalkableChar(rows[y]?.[x] ?? '#') && !blocked.has(y * width + x);
 
     if (!open(spawn.x, spawn.y)) {
         return seen; // спавн на стене или под предметом — дойти неоткуда
     }
 
-    const queue = [spawn.y * width + spawn.x];
-    seen.add(queue[0]);
+    const start = spawn.y * width + spawn.x;
+    const queue = [start];
+    seen.add(start);
     let head = 0;
     while (head < queue.length) {
         const cell = queue[head++];
+        if (cell === undefined) {
+            continue;
+        }
         const cx = cell % width;
         const cy = (cell - cx) / width;
         for (const [dx, dy] of [
@@ -133,7 +137,7 @@ export function reachableFromSpawn(rows: string[], blocked: ReadonlySet<number>,
             [0, 1],
             [-1, 0],
             [1, 0],
-        ]) {
+        ] as const) {
             const nx = cx + dx;
             const ny = cy + dy;
             if (!open(nx, ny)) {
@@ -176,6 +180,9 @@ export function reachableWithout(
     let head = 0;
     while (head < queue.length) {
         const cell = queue[head++];
+        if (cell === undefined) {
+            continue;
+        }
         const cx = cell % width;
         const cy = (cell - cx) / width;
         for (const [dx, dy] of [
@@ -183,7 +190,7 @@ export function reachableWithout(
             [0, 1],
             [-1, 0],
             [1, 0],
-        ]) {
+        ] as const) {
             const nx = cx + dx;
             const ny = cy + dy;
             if (nx < 0 || ny < 0 || nx >= width) {

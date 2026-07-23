@@ -20,7 +20,7 @@ describe('resizeRows', () => {
         expect(bigger).toHaveLength(7);
         expect(bigger.every((r) => r.length === 8)).toBe(true);
         // исходное содержимое сохранилось на своих координатах
-        expect(bigger[2][2]).toBe(':');
+        expect(bigger[2]?.[2]).toBe(':');
         // периметр — стена
         expect(bigger[0]).toBe('########');
         expect(bigger[6]).toBe('########');
@@ -41,7 +41,7 @@ describe('resizeRows', () => {
             [10, 4],
             [4, 10],
             [64, 64],
-        ]) {
+        ] as const) {
             const rows = resizeRows(sample, w, h);
             const map = makeMap({ rows, spawn: { x: 1, y: 1 }, zones: [], portals: [] } as MapData);
             expect(map.width).toBe(w);
@@ -57,14 +57,14 @@ describe('resizeRows', () => {
     it('не даёт выйти за пределы допустимого размера', () => {
         expect(resizeRows(sample, 1, 1)).toHaveLength(3); // минимум 3
         const huge = resizeRows(sample, MAX_MAP_SIZE + 100, 5);
-        expect(huge[0].length).toBe(MAX_MAP_SIZE);
+        expect(huge[0]?.length).toBe(MAX_MAP_SIZE);
     });
 
     it('справляется с большой картой', () => {
         const started = performance.now();
         const big = resizeRows(sample, 512, 512);
         expect(big).toHaveLength(512);
-        expect(big[0].length).toBe(512);
+        expect(big[0]?.length).toBe(512);
         expect(performance.now() - started).toBeLessThan(500);
     });
 });

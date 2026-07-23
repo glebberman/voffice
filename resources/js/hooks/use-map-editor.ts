@@ -62,7 +62,7 @@ const NOTHING_REACHABLE: ReadonlySet<number> = new Set<number>();
 function nearestWalkable(rows: string[], x: number, y: number): { x: number; y: number } {
     const w = rows[0]?.length ?? 0;
     const h = rows.length;
-    const ok = (cx: number, cy: number) => cx >= 0 && cy >= 0 && cx < w && cy < h && isWalkableChar(rows[cy][cx]);
+    const ok = (cx: number, cy: number) => cx >= 0 && cy >= 0 && cx < w && cy < h && isWalkableChar(rows[cy]?.[cx] ?? '#');
     if (ok(x, y)) {
         return { x, y };
     }
@@ -108,7 +108,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     const [rectPreview, setRectPreview] = useState<RectPreview | null>(null);
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState<string[]>([]);
-    const [sizeDraft, setSizeDraft] = useState({ w: room.map.rows[0].length, h: room.map.rows.length });
+    const [sizeDraft, setSizeDraft] = useState({ w: room.map.rows[0]?.length ?? 0, h: room.map.rows.length });
 
     const editorRef = useRef<EditorCanvasHandle | null>(null);
     // счётчик для уникального id предмета: Date.now() может совпасть при быстрой
@@ -170,7 +170,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         }
         if (tool === 'door') {
             // дверь только на проходимой клетке — на стене она заперла бы проход навсегда
-            if (!isWalkableChar(rows[y][x]) || doors.some((d) => d.x === x && d.y === y)) {
+            if (!isWalkableChar(rows[y]?.[x] ?? '#') || doors.some((d) => d.x === x && d.y === y)) {
                 return;
             }
             // id не завязан на координаты: перенос двери его не меняет, а вторая
@@ -302,8 +302,8 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
         if (tool === 'select') {
             // клик по предмету выделяет его и начинает возможный перенос; по пустому — снимает выделение
             const idx = propAt(catalogue, props, tile.x, tile.y);
-            if (idx !== null) {
-                const p = props[idx];
+            const p = idx !== null ? props[idx] : undefined;
+            if (idx !== null && p) {
                 setSelectedProp(idx);
                 moveDrag.current = { index: idx, grabDx: tile.x - p.x, grabDy: tile.y - p.y, x: p.x, y: p.y };
                 setDragTarget({ x: p.x, y: p.y });
@@ -405,8 +405,8 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
                 const sel = selectedRef.current;
                 if (sel !== null && sel < propsRef.current.length) {
                     const p = propsRef.current[sel];
-                    const spec = propSpec(catalogue, p.type);
-                    if (spec) {
+                    const spec = p ? propSpec(catalogue, p.type) : null;
+                    if (p && spec) {
                         rotateProp(sel, nextPropDir(spec, p.dir));
                         e.preventDefault();
                     }
@@ -522,9 +522,10 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
 
     // призрак предмета: при переносе — на цели переноса, при расстановке — под курсором
     const move = moveDrag.current;
+    const moved = move && move.index < props.length ? props[move.index] : undefined;
     const propGhost: PropGhostView | null =
-        dragTarget && move && move.index < props.length
-            ? ghostFor(props[move.index].type, props[move.index].dir, dragTarget.x, dragTarget.y, props[move.index].id)
+        dragTarget && moved
+            ? ghostFor(moved.type, moved.dir, dragTarget.x, dragTarget.y, moved.id)
             : placing && hover
               ? ghostFor(placing.type, placing.dir, hover.x, hover.y)
               : null;
@@ -533,9 +534,9 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     let propSelection: PropSelectionView | null = null;
     if (selectedProp !== null && selectedProp < props.length) {
         const p = props[selectedProp];
-        const spec = propSpec(catalogue, p.type);
-        const orientation = spec ? propOrientation(spec, p.dir) : null;
-        if (orientation) {
+        const spec = p ? propSpec(catalogue, p.type) : null;
+        const orientation = spec ? propOrientation(spec, p?.dir) : null;
+        if (p && orientation) {
             propSelection = { x: p.x, y: p.y, w: orientation.w, h: orientation.h };
         }
     }
@@ -549,10 +550,10 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
             ? null
             : placing && hover
               ? { type: placing.type, dir: placing.dir, x: hover.x, y: hover.y }
-              : dragTarget && move && move.index < props.length
-                ? { type: props[move.index].type, dir: props[move.index].dir, x: dragTarget.x, y: dragTarget.y }
+              : dragTarget && moved
+                ? { type: moved.type, dir: moved.dir, x: dragTarget.x, y: dragTarget.y }
                 : selectedProp !== null && selectedProp < props.length
-                  ? props[selectedProp]
+                  ? (props[selectedProp] ?? null)
                   : null;
     // слепок активного предмета: zoneOf пересобирается каждый рендер, а мемо
     // должны держаться за то, что реально изменилось
@@ -568,7 +569,7 @@ export function useMapEditor(room: RoomInfo, catalogue: PropCatalogue) {
     const zoneHeight = deferredRows.length;
 
     // Прежнее место переносимого предмета ему же не мешает.
-    const draggingId = dragTarget && move && move.index < props.length ? props[move.index].id : undefined;
+    const draggingId = dragTarget && moved ? moved.id : undefined;
     const blocked = useMemo(() => blockedByProps(catalogue, props, zoneWidth, draggingId), [catalogue, props, zoneWidth, draggingId]);
 
     // считать нечего, если ни одного функционального предмета и никого не ведут

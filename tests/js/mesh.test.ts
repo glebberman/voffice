@@ -109,7 +109,7 @@ const meshOf = () =>
         onPeerClosed: vi.fn(),
     });
 
-const sentTracks = (pc: FakePeerConnection) => pc.getSenders().map((s) => s.track?.label ?? null);
+const sentTracks = (pc: FakePeerConnection | undefined) => (pc ? pc.getSenders().map((s) => s.track?.label ?? null) : []);
 
 describe('исходящее видео', () => {
     it('пиру, поднятому во время демонстрации, уезжает экран, а не камера', () => {

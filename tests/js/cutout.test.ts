@@ -10,7 +10,7 @@ const centerY = (row: number) => row * TILE + TILE / 2;
 function points(poly: number[]): { x: number; y: number }[] {
     const out: { x: number; y: number }[] = [];
     for (let i = 0; i < poly.length; i += 2) {
-        out.push({ x: poly[i], y: poly[i + 1] });
+        out.push({ x: poly[i] ?? 0, y: poly[i + 1] ?? 0 });
     }
     return out;
 }

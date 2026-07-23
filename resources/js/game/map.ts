@@ -144,11 +144,12 @@ export function resizeRows(rows: string[], width: number, height: number): strin
 
 /** Заменяет один тайл, не копируя всю сетку (важно на больших картах). */
 export function setTile(rows: string[], x: number, y: number, ch: string): string[] {
-    if (y < 0 || y >= rows.length || x < 0 || x >= rows[y].length || rows[y][x] === ch) {
+    const line = rows[y];
+    if (line === undefined || x < 0 || x >= line.length || line[x] === ch) {
         return rows;
     }
     const next = rows.slice();
-    next[y] = rows[y].slice(0, x) + ch + rows[y].slice(x + 1);
+    next[y] = line.slice(0, x) + ch + line.slice(x + 1);
     return next;
 }
 
@@ -161,7 +162,11 @@ export function fillRect(rows: string[], x0: number, y0: number, x1: number, y1:
 
     const next = rows.slice();
     for (let y = top; y <= bottom; y++) {
-        next[y] = next[y].slice(0, left) + ch.repeat(right - left + 1) + next[y].slice(right + 1);
+        const line = next[y];
+        if (line === undefined) {
+            continue;
+        }
+        next[y] = line.slice(0, left) + ch.repeat(right - left + 1) + line.slice(right + 1);
     }
     return next;
 }
@@ -235,7 +240,7 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
         if (x < 0 || y < 0 || x >= width || y >= height) {
             return '#';
         }
-        return rows[y][x];
+        return rows[y]?.[x] ?? '#';
     };
 
     // ориентация предмета: спека по типу, затем сторона с фолбэком на south
@@ -334,15 +339,19 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
             return seen;
         }
 
-        const queue = [y * width + x];
-        seen.add(queue[0]);
+        const start = y * width + x;
+        const queue = [start];
+        seen.add(start);
         // очередь растёт по ходу обхода, поэтому идём указателем, а не for-of
         let head = 0;
         while (head < queue.length) {
             const cell = queue[head++];
+            if (cell === undefined) {
+                continue;
+            }
             const cx = cell % width;
             const cy = (cell - cx) / width;
-            if (!isWalkable(cx, cy) && cell !== queue[0]) {
+            if (!isWalkable(cx, cy) && cell !== start) {
                 continue; // закрытая дверь: видно её саму, но не то, что за ней
             }
             for (const [dx, dy] of [
@@ -350,7 +359,7 @@ export function makeMap(data: MapData, catalogue: PropCatalogue = {}): GameMap {
                 [0, 1],
                 [-1, 0],
                 [1, 0],
-            ]) {
+            ] as const) {
                 const nx = cx + dx;
                 const ny = cy + dy;
                 if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
