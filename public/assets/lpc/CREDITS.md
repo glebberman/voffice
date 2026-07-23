@@ -27,7 +27,10 @@
 
 [[LPC] Wooden Furniture](https://opengameart.org/content/lpc-wooden-furniture)
 — bluecarrot16, Lanea Zimmerman (Sharm), Tuomo Untinen (Reemax) и др.
-Лицензия: CC-BY-SA 4.0/3.0, GPL 3.0. Полный список: `furniture/CREDITS-furniture.txt`.
+Лицензия: CC-BY-SA 4.0/3.0, GPL 3.0. Плюс диваны из
+[[LPC] Upholstery](https://opengameart.org/content/lpc-upholstery) —
+bluecarrot16, Lanea Zimmerman (Sharm), CC-BY-SA 3.0 / GPL 3.0 / OGA-BY 3.0
+(`upholstery.png`). Полный список: `furniture/CREDITS-furniture.txt`.
 
 ## interior/ — интерьер и декор
 

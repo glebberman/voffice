@@ -350,6 +350,38 @@
                     ]
                 }
             }
+        },
+        "sofa": {
+            "label": "Диван",
+            "description": "Мягкий двухместный диван. Спинка нависает — за ней проходят.",
+            "purposes": ["utility"],
+            "roomKinds": ["openspace", "lounge"],
+            "orientations": {
+                "south": {
+                    "sheet": "furniture/upholstery.png",
+                    "sx": 224,
+                    "sy": 128,
+                    "w": 2,
+                    "h": 1,
+                    "tall": 1
+                }
+            }
+        },
+        "kitchen-counter": {
+            "label": "Кухонная стойка",
+            "description": "Столешница с тумбой. Верх нависает, тумба — основание.",
+            "purposes": ["food"],
+            "roomKinds": ["kitchen"],
+            "orientations": {
+                "south": {
+                    "sheet": "furniture/furniture-v1.5.png",
+                    "sx": 64,
+                    "sy": 192,
+                    "w": 1,
+                    "h": 1,
+                    "tall": 1
+                }
+            }
         }
     }
 }
