@@ -93,8 +93,8 @@ describe('офисная карта: геометрия и правила', () =
 
     it('стены, мебель и границы непроходимы', () => {
         expect(map.isWalkable(0, 0)).toBe(false);
-        expect(map.isWalkable(2, 2)).toBe(false); // стол
-        expect(map.isWalkable(3, 7)).toBe(false); // растение
+        expect(map.isWalkable(2, 2)).toBe(false); // основание стола (предмет)
+        expect(map.isWalkable(12, 2)).toBe(false); // кухонная стойка (предмет)
         expect(map.isWalkable(-1, 0)).toBe(false);
         expect(map.isWalkable(map.width, 0)).toBe(false);
     });

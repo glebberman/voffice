@@ -1,12 +1,12 @@
 import { fillRect, makeMap, MAX_MAP_SIZE, resizeRows, sealPerimeter, setTile, type MapData } from '@/game/map';
 import { describe, expect, it } from 'vitest';
 
-const sample = ['#####', '#...#', '#.D.#', '#...#', '#####'];
+const sample = ['#####', '#...#', '#.:.#', '#...#', '#####'];
 
 describe('sealPerimeter', () => {
     it('обводит карту стеной, не трогая внутренности', () => {
-        const open = ['.....', '..D..', '.....'];
-        expect(sealPerimeter(open)).toEqual(['#####', '#.D.#', '#####']);
+        const open = ['.....', '..:..', '.....'];
+        expect(sealPerimeter(open)).toEqual(['#####', '#.:.#', '#####']);
     });
 
     it('идемпотентен', () => {
@@ -20,7 +20,7 @@ describe('resizeRows', () => {
         expect(bigger).toHaveLength(7);
         expect(bigger.every((r) => r.length === 8)).toBe(true);
         // исходное содержимое сохранилось на своих координатах
-        expect(bigger[2][2]).toBe('D');
+        expect(bigger[2][2]).toBe(':');
         // периметр — стена
         expect(bigger[0]).toBe('########');
         expect(bigger[6]).toBe('########');

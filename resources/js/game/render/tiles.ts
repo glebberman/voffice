@@ -28,8 +28,9 @@ export interface ChunkParts {
 }
 
 /**
- * Рисует один чанк карты (CHUNK_TILES × CHUNK_TILES тайлов) — процедурный пол,
- * стены и символьную мебель.
+ * Рисует один чанк карты (CHUNK_TILES × CHUNK_TILES тайлов) — процедурный пол
+ * (в т.ч. зонный) и стены. Мебель — это предметы каталога, их рисует
+ * prop-sprites поверх этого слоя.
  *
  * skipCrown — клетки, где верхушку стены рисовать не нужно: в игре это
  * доступная персонажу область (стена ближе к камере не должна загораживать
@@ -52,11 +53,11 @@ export function drawChunk(map: TileSource, cx: number, cy: number, skipCrown: Re
 
             // базовый пол под всеми тайлами
             const baseFloor =
-                ch === ':' || ch === 'K'
+                ch === ':'
                     ? COLORS.kitchenFloor
-                    : ch === ',' || ch === 'T'
+                    : ch === ','
                       ? COLORS.meetingCarpet
-                      : ch === ';' || ch === 'S'
+                      : ch === ';'
                         ? COLORS.loungeRug
                         : (x + y) % 2 === 0
                           ? COLORS.floor
@@ -77,28 +78,6 @@ export function drawChunk(map: TileSource, cx: number, cy: number, skipCrown: Re
                 case '#':
                     g.rect(px, py, TILE, TILE).fill(COLORS.wall);
                     g.rect(px, py, TILE, 6).fill(COLORS.wallTop);
-                    break;
-                case 'D':
-                    g.roundRect(px + 2, py + 4, TILE - 4, TILE - 8, 4).fill(COLORS.desk);
-                    g.roundRect(px + 4, py + 6, TILE - 8, TILE - 16, 3).fill(COLORS.deskTop);
-                    break;
-                case 'K':
-                    g.roundRect(px + 2, py + 2, TILE - 4, TILE - 4, 3).fill(COLORS.counter);
-                    g.roundRect(px + 4, py + 4, TILE - 8, TILE - 12, 2).fill(COLORS.counterTop);
-                    break;
-                case 'T':
-                    g.roundRect(px + 1, py + 3, TILE - 2, TILE - 6, 5).fill(COLORS.table);
-                    g.roundRect(px + 3, py + 5, TILE - 6, TILE - 12, 4).fill(COLORS.tableTop);
-                    break;
-                case 'S':
-                    g.roundRect(px + 2, py + 5, TILE - 4, TILE - 8, 6).fill(COLORS.sofa);
-                    g.roundRect(px + 4, py + 7, TILE - 8, TILE - 14, 4).fill(COLORS.sofaTop);
-                    break;
-                case 'P':
-                    g.roundRect(px + 9, py + 16, 14, 12, 3).fill(COLORS.plantPot);
-                    g.circle(px + 16, py + 12, 9).fill(COLORS.plant);
-                    g.circle(px + 10, py + 16, 6).fill(COLORS.plant);
-                    g.circle(px + 22, py + 16, 6).fill(COLORS.plant);
                     break;
                 case '*':
                     // spotlight-сцена: тёплый круг света

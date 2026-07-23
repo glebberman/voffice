@@ -5,11 +5,6 @@ export const TILE_COLOR: Record<string, string> = {
     ':': '#dce8e4',
     ',': '#dce0f0',
     ';': '#f2ddd0',
-    D: '#b08968',
-    K: '#8aafa5',
-    T: '#7c6fae',
-    S: '#d98e73',
-    P: '#5fa867',
     '*': '#ffe08a',
 };
 
@@ -19,10 +14,5 @@ export const TILE_LABEL: Record<string, string> = {
     ':': 'Кухня',
     ',': 'Ковёр переговорки',
     ';': 'Ковёр лаунжа',
-    D: 'Рабочий стол',
-    K: 'Кухонная стойка',
-    T: 'Стол переговорки',
-    S: 'Диван',
-    P: 'Растение',
     '*': 'Spotlight (сцена)',
 };

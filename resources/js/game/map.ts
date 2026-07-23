@@ -1,12 +1,11 @@
 import { propInteractionCells, propOrientation, type PropCatalogue, type PropDir, type PropOrientation, type PropSpec } from './props';
 
 // Карта комнаты приезжает с сервера (rooms.map, исходники в resources/maps/*.json).
-// Каждый символ — тайл 32×32:
+// Каждый символ — тайл 32×32. Мебель — это предметы каталога (props), пол под
+// ними красится по зоне:
 //
-//  #  стена          D  рабочий стол     T  стол переговорки
-//  .  пол            K  кухонная стойка  S  диван
-//  :  плитка кухни   ,  ковёр переговорки
-//  ;  ковёр лаунжа   P  растение         *  spotlight (сцена)
+//  #  стена          :  плитка кухни     ,  ковёр переговорки
+//  .  пол            ;  ковёр лаунжа     *  spotlight (сцена)
 
 export const TILE = 32;
 
@@ -108,7 +107,7 @@ export function isWalkableChar(ch: string): boolean {
 }
 
 // список тайлов для палитры редактора карт
-export const TILE_CHARS = ['.', '#', ':', ',', ';', 'D', 'K', 'T', 'S', 'P', '*'] as const;
+export const TILE_CHARS = ['.', '#', ':', ',', ';', '*'] as const;
 
 // предел размера карты (совпадает с валидацией MapUpdateRequest)
 export const MAX_MAP_SIZE = 512;
