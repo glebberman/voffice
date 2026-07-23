@@ -1101,8 +1101,11 @@ export function useOffice(user: PresenceMember, canvasHost: React.RefObject<HTML
             sceneRef.current = null;
             players.clear();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+        // Все зависимости стабильны (ref-объект, useState-карта, примитивы
+        // комнаты, useCallback'и со стабильными деп-массивами), поэтому эффект
+        // по-прежнему выполняется один раз при монтировании — но exhaustive-deps
+        // это видит и не требует подавления.
+    }, [map, roomId, options.roomSlug, canvasHost, updateStatusState, appendRoomMessage, upsert, nearestDoor, updateNearby, toggleDoor]);
 
     const sendMessage = useCallback(
         (text: string) => {
