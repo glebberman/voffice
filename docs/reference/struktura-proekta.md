@@ -74,7 +74,7 @@ realtime на Laravel Reverb. Ниже — назначение ключевых
 
 | Путь                 | Назначение                                                           |
 | -------------------- | -------------------------------------------------------------------- |
-| `compose.yaml`       | сервисы app / reverb / vite / queue (+ coturn под профилем `webrtc`) |
+| `compose.yaml`       | сервисы app / reverb / vite (+ coturn под профилем `webrtc`)         |
 | `.github/workflows/` | CI: линт и тесты (PHPUnit + Vitest)                                  |
 | `vite.config.js`     | сборка; страницы с pixi заданы явными входами                        |
 | `ROADMAP.md`         | план развития (этапы 1–6 пройдены)                                   |

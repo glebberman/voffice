@@ -4,10 +4,10 @@
 
 | Команда                                 | Что делает                                                             |
 | --------------------------------------- | ---------------------------------------------------------------------- |
-| `docker compose up -d`                  | весь стек в контейнерах: app (8000), reverb (8080), vite (5173), queue |
+| `docker compose up -d`                  | весь стек в контейнерах: app (8000), reverb (8080), vite (5173)        |
 | `docker compose --profile webrtc up -d` | то же + coturn (TURN/STUN для WebRTC вне LAN)                          |
 | `docker compose down`                   | остановить                                                             |
-| `composer run dev`                      | запуск без Docker: serve + queue + pail + vite + reverb одной командой |
+| `composer run dev`                      | запуск без Docker: serve + pail + vite + reverb одной командой         |
 
 ## Разработка
 
@@ -123,7 +123,7 @@ CI (`.github/workflows/`) гоняет оба набора на каждый pus
 | `APP_PORT`             | порт приложения на хосте (по умолчанию 8000) |
 | `WWWUSER`, `WWWGROUP`  | uid/gid для прав на volume (1000)            |
 | `BROADCAST_CONNECTION` | драйвер вещания (`reverb`)                   |
-| `QUEUE_CONNECTION`     | очередь для broadcast-событий                |
+| `QUEUE_CONNECTION`     | драйвер очереди (`database`); сейчас не используется — фоновых задач нет |
 
 ### Reverb (WebSocket)
 
